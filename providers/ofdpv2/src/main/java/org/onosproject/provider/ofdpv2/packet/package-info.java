@@ -1,5 +1,5 @@
 /*
- * Copyright 2014-present Open Networking Foundation
+ * Copyright 2016-present Open Networking Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,6 +15,6 @@
  */
 
 /**
- * Implementation of LLDP Link Discovery using OFDPv2 Approach
+ * unique packet ethernet type for onoslldp
  */
-package org.onosproject.provider.ofdpv2.impl;
+package org.onosproject.provider.ofdpv2.packet;

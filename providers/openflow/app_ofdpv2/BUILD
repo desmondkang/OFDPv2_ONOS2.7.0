@@ -11,6 +11,6 @@ onos_app(
                   "location provider and LLDP link provider using OFDPv2 Approach.",
     included_bundles = ["//utils/osgi:onlab-osgi"],  # FIXME to allow hollow oar files
     required_apps = APPS,
-    title = "OpenFlow Provider Suite - OFDPv2",
+    title = "OFDPv2 - OpenFlow Provider Suite",
     url = "http://onosproject.org",
 )

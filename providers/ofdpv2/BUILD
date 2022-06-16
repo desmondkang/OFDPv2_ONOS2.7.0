@@ -11,7 +11,6 @@ osgi_jar_with_tests(
     karaf_command_packages =
         [
             "org.onosproject.provider.ofdpv2.cli",
-            "org.onosproject.provider.lldpcommon_ofdpv2",
         ],
     test_deps = TEST_ADAPTERS,
     deps = COMPILE_DEPS,

@@ -13,11 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.onlab.packet;
+package org.onosproject.provider.ofdpv2.packet;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.commons.lang.ArrayUtils;
+import org.onlab.packet.ChassisId;
+import org.onlab.packet.Ethernet;
+import org.onlab.packet.LLDP;
+import org.onlab.packet.LLDPOrganizationalTLV;
+import org.onlab.packet.LLDPTLV;
+import org.onlab.packet.MacAddress;
 import org.slf4j.Logger;
 
 import javax.crypto.Mac;
