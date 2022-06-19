@@ -24,7 +24,8 @@ import java.util.concurrent.CompletableFuture;
  * shop for obtaining OpenFlow devices and (un)register listeners
  * on OpenFlow events
  */
-public interface OpenFlowController {
+public interface OpenFlowController
+{
 
     /**
      * Returns all switches known to this OF controller.

@@ -231,6 +231,7 @@ APP_MAP = {
     "//apps/node-diagnosis:onos-apps-node-diagnosis-oar": [],
     "//apps/odtn/api:onos-apps-odtn-api-oar": [],
     "//apps/odtn/service:onos-apps-odtn-service-oar": [],
+    "//apps/oneping:onos-apps-oneping-oar": [],
     "//apps/ofagent:onos-apps-ofagent-oar": [],
     "//apps/onlp-demo:onos-apps-onlp-demo-oar": [],
     "//apps/onos-topo:onos-apps-onos-topo-oar": [],

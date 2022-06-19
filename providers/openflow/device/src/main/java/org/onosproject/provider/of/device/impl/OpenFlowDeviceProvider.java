@@ -146,12 +146,17 @@ import static org.slf4j.LoggerFactory.getLogger;
  * Provider which uses an OpenFlow controller to detect network
  * infrastructure devices.
  */
-@Component(immediate = true,
-        property = {
-                POLL_FREQ + ":Integer=" + POLL_FREQ_DEFAULT,
-                PROP_FREQ + ":Boolean=" + PROP_FREQ_DEFAULT,
-        })
-public class OpenFlowDeviceProvider extends AbstractProvider implements DeviceProvider {
+@Component
+(   immediate = true,
+    property =
+    {
+        POLL_FREQ + ":Integer=" + POLL_FREQ_DEFAULT,
+        PROP_FREQ + ":Boolean=" + PROP_FREQ_DEFAULT,
+    }
+)
+
+public class OpenFlowDeviceProvider extends AbstractProvider implements DeviceProvider
+{
 
     private static final Logger LOG = getLogger(OpenFlowDeviceProvider.class);
 
@@ -466,12 +471,14 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
     /**
      * Creates an OpenFlow device provider.
      */
-    public OpenFlowDeviceProvider() {
+    public OpenFlowDeviceProvider()
+    {
         super(new ProviderId(SCHEME, "org.onosproject.provider.openflow"));
     }
 
     @Activate
-    public void activate(ComponentContext context) {
+    public void activate(ComponentContext context)
+    {
         cfgService.registerProperties(getClass());
         providerService = providerRegistry.register(this);
         controller.addListener(listener);
@@ -496,18 +503,22 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
     }
 
     @Modified
-    public void modified(ComponentContext context) {
+    public void modified(ComponentContext context)
+    {
         Dictionary<?, ?> properties = context != null ? context.getProperties() : new Properties();
         int newPortStatsPollFrequency;
-        try {
+        try
+        {
             String s = get(properties, POLL_FREQ);
             newPortStatsPollFrequency = isNullOrEmpty(s) ? portStatsPollFrequency : Integer.parseInt(s.trim());
 
-        } catch (NumberFormatException | ClassCastException e) {
+        } catch (NumberFormatException | ClassCastException e)
+        {
             newPortStatsPollFrequency = portStatsPollFrequency;
         }
 
-        if (newPortStatsPollFrequency != portStatsPollFrequency) {
+        if (newPortStatsPollFrequency != portStatsPollFrequency)
+        {
             portStatsPollFrequency = newPortStatsPollFrequency;
             collectors.values().forEach(psc -> psc.adjustPollInterval(portStatsPollFrequency));
         }
@@ -515,11 +526,16 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
         LOG.info("Settings: portStatsPollFrequency={}", portStatsPollFrequency);
     }
 
-    private void connectInitialDevices() {
-        for (OpenFlowSwitch sw : controller.getSwitches()) {
-            try {
+    private void connectInitialDevices()
+    {
+        for (OpenFlowSwitch sw : controller.getSwitches())
+        {
+            try
+            {
                 listener.switchAdded(new Dpid(sw.getId()));
-            } catch (Exception e) {
+            }
+            catch (Exception e)
+            {
                 LOG.warn("Failed initially adding {} : {}", sw.getStringId(), e.getMessage());
                 LOG.debug("Error details:", e);
                 // disconnect to trigger switch-add later
@@ -529,7 +545,8 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
     }
 
     @Override
-    public boolean isReachable(DeviceId deviceId) {
+    public boolean isReachable(DeviceId deviceId)
+    {
         OpenFlowSwitch sw = controller.getSwitch(dpid(deviceId.uri()));
         return sw != null && sw.isConnected();
     }
@@ -673,8 +690,10 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
         OpenFlowSwitch sw = controller.getSwitch(dpid);
 
         for (OFPortStatsEntry entry : entries) {
-            try {
-                if (entry == null || entry.getPortNo() == null || entry.getPortNo().getPortNumber() < 0) {
+            try
+            {
+                if (entry == null || entry.getPortNo() == null || entry.getPortNo().getPortNumber() < 0)
+                {
                     continue;
                 }
                 DefaultAnnotations.Builder annotations = DefaultAnnotations.builder();
@@ -765,7 +784,8 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
                         .build();
 
                 stats.add(stat);
-            } catch (Exception e) {
+            } catch (Exception e)
+            {
                 LOG.warn("Unable to process port stats", e);
             }
         }
@@ -773,19 +793,23 @@ public class OpenFlowDeviceProvider extends AbstractProvider implements DevicePr
         return Collections.unmodifiableSet(stats);
     }
 
-    private class InternalDeviceProvider implements OpenFlowSwitchListener, OpenFlowEventListener {
+    private class InternalDeviceProvider implements OpenFlowSwitchListener, OpenFlowEventListener
+    {
 
         private HashMap<Dpid, List<OFPortStatsEntry>> portStatsReplies = new HashMap<>();
         private boolean isDisabled = false;
 
         @Override
-        public void switchAdded(Dpid dpid) {
-            if (providerService == null) {
+        public void switchAdded(Dpid dpid)
+        {
+            if (providerService == null)
+            {
                 return;
             }
             DeviceId did = deviceId(uri(dpid));
             OpenFlowSwitch sw = controller.getSwitch(dpid);
-            if (sw == null) {
+            if (sw == null)
+            {
                 LOG.error("Switch {} is not found", dpid);
                 return;
             }

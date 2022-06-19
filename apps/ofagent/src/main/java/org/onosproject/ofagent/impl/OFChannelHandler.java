@@ -47,20 +47,25 @@ public final class OFChannelHandler extends ChannelDuplexHandler {
 
     enum ChannelState {
 
-        INIT {
+        INIT
+        {
             @Override
-            void processOFMessage(final OFChannelHandler handler,
-                                  final OFMessage msg) {
+            void processOFMessage(final OFChannelHandler handler, final OFMessage msg)
+            {
                 logProcessOFMessageDetails(handler, msg, this);
                 // TODO implement
             }
         },
-        WAIT_HELLO {
+        WAIT_HELLO
+        {
             @Override
-            void processOFMessage(final OFChannelHandler handler,
-                                  final OFMessage msg) {
+            void processOFMessage(final OFChannelHandler handler, final OFMessage msg)
+            {
                 logProcessOFMessageDetails(handler, msg, this);
-                switch (msg.getType()) {
+                switch (msg.getType())
+                {
+                    //if the incoming message is OFPP_HELLO, send Features_request, then
+                    //wait for the feature request reply
                     case HELLO:
                         handler.setState(ChannelState.WAIT_FEATURE_REQUEST);
                         break;
@@ -70,12 +75,16 @@ public final class OFChannelHandler extends ChannelDuplexHandler {
                 }
             }
         },
-        WAIT_FEATURE_REQUEST {
+        WAIT_FEATURE_REQUEST
+        {
             @Override
-            void processOFMessage(final OFChannelHandler handler,
-                                  final OFMessage msg) {
+            void processOFMessage(final OFChannelHandler handler, final OFMessage msg)
+            {
                 logProcessOFMessageDetails(handler, msg, this);
-                switch (msg.getType()) {
+                switch (msg.getType())
+                {
+//                    if the incoming message is features request type,
+//                    then the channel is said to be established
                     case FEATURES_REQUEST:
                         handler.ofSwitch.processFeaturesRequest(handler.channel, msg);
                         handler.setState(ChannelState.ESTABLISHED);
@@ -93,14 +102,16 @@ public final class OFChannelHandler extends ChannelDuplexHandler {
                 }
             }
         },
-        ESTABLISHED {
+        ESTABLISHED
+        {
             @Override
-            void processOFMessage(final OFChannelHandler handler,
-                                  final OFMessage msg) {
+            void processOFMessage(final OFChannelHandler handler, final OFMessage msg)
+            {
                 logProcessOFMessageDetails(handler, msg, this);
                 // TODO implement
                 // TODO add this channel to ofSwitch role service
-                switch (msg.getType()) {
+                switch (msg.getType())
+                {
                     case STATS_REQUEST:
                         //TODO implement
                         //TODO: use vNetService to build OFPortDesc.
