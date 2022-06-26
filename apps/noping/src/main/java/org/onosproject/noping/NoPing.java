@@ -112,7 +112,7 @@ public class NoPing {
         appId = coreService.registerApplication("org.onosproject.noping",
                                                 () -> log.info("Periscope down."));
         packetService.addProcessor(packetProcessor, PRIORITY);
-        flowRuleService.addListener(flowListener);
+        flowRuleService.addListener(flowListener); //Flow Rule Event Listener
         packetService.requestPackets(intercept, PacketPriority.CONTROL, appId,
                                      Optional.empty());
         log.info("Started");

@@ -249,6 +249,7 @@ APP_MAP = {
     "//apps/p4-tutorial/pipeconf:onos-apps-p4-tutorial-pipeconf-oar": [],
     "//apps/packet-stats:onos-apps-packet-stats-oar": [],
     "//apps/packet-throttle:onos-apps-packet-throttle-oar": [],
+    "//apps/packetsniffer:onos-apps-packetsniffer-oar": [],
     "//apps/pathpainter:onos-apps-pathpainter-oar": [],
     "//apps/pim:onos-apps-pim-oar": [],
     "//apps/pingall:onos-apps-pingall-oar": [],
