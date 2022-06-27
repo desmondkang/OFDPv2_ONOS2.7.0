@@ -179,9 +179,9 @@ public class LinkDiscovery implements TimerTask {
             return false;
         }
 
-        if (processOnosLldp(packetContext, eth)) {
-            return true;
-        }
+//        if (processOnosLldp(packetContext, eth)) {
+//            return true;
+//        }
 
         if (processLldp(packetContext, eth)) {
             return true;
@@ -205,6 +205,7 @@ public class LinkDiscovery implements TimerTask {
         ONOSLLDP_ofdpv2 onoslldp = ONOSLLDP_ofdpv2.parseONOSLLDP(eth);
         if (onoslldp != null) {
             Type lt;
+            // Need to find another way for ONOS to deal with mastership
             if (notMy(eth.getSourceMAC().toString())) {
                 lt = Type.EDGE;
             } else {
@@ -220,8 +221,13 @@ public class LinkDiscovery implements TimerTask {
 
             //srcPort is redundant
             //need to configure it to verify srcPort through MAC Address
+            MacAddress srcMac = eth.getSourceMAC();
+            // Need to find a way to convert srcMac to PortNumber
+            // Using one-to-one mapping
+            log.info("Proccessing ONOS LLDP...");
             PortNumber srcPort = portNumber(onoslldp.getPort());
             PortNumber dstPort = packetContext.inPacket().receivedFrom().port();
+            log.info("SrcMAC: {}, SrcPort: {} | dstPort: {}", srcMac, srcPort, dstPort);
 
             String idString = onoslldp.getDeviceString();
             if (!isNullOrEmpty(idString)) {
@@ -231,12 +237,11 @@ public class LinkDiscovery implements TimerTask {
 
                     ConnectPoint src = translateSwitchPort(srcDeviceId, srcPort);
                     ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
-
                     LinkDescription ld = new DefaultLinkDescription(src, dst, lt);
-                    context.providerService().linkDetected(ld);
-                    context.touchLink(LinkKey.linkKey(src, dst));
+                    context.providerService().linkDetected(ld); // This is where links truly gets registered
+                    context.touchLink(LinkKey.linkKey(src, dst)); // Dont see the point of this yet
                 } catch (IllegalStateException | IllegalArgumentException e) {
-                    log.warn("There is a exception during link creation: {}", e.getMessage());
+                    log.warn("There is an exception during link creation: {}", e.getMessage());
                     return true;
                 }
                 return true;
@@ -266,7 +271,7 @@ public class LinkDiscovery implements TimerTask {
 
             Optional<Device> srcDevice = findSourceDeviceByChassisId(deviceService, srcChassisId);
 
-            if (!srcDevice.isPresent()) {
+            if (srcDevice.isEmpty()) {
                 log.debug("source device not found. srcChassisId value: {}", srcChassisId);
                 return false;
             }
@@ -275,7 +280,7 @@ public class LinkDiscovery implements TimerTask {
                     deviceService,
                     srcDevice.get());
 
-            if (!sourcePort.isPresent()) {
+            if (sourcePort.isEmpty()) {
                 log.debug("source port not found. sourcePort value: {}", sourcePort);
                 return false;
             }
@@ -305,7 +310,7 @@ public class LinkDiscovery implements TimerTask {
                 context.providerService().linkDetected(ld);
                 context.setTtl(LinkKey.linkKey(src, dst), onoslldp.getTtlBySeconds());
             } catch (IllegalStateException e) {
-                log.debug("There is a exception during link creation: {}", e);
+                log.debug("There is a exception during link creation: {}", e.toString()); //added toString()
                 return true;
             }
             return true;
@@ -363,6 +368,7 @@ public class LinkDiscovery implements TimerTask {
         // if we are using DEFAULT_MAC, clustering hadn't initialized, so conservative 'yes'
         String ourMac = context.fingerprint();
         if (ProbedLinkProvider.defaultMac().equalsIgnoreCase(ourMac)) {
+            // DEFAULT_MAC
             return true;
         }
         return !mac.equalsIgnoreCase(ourMac);

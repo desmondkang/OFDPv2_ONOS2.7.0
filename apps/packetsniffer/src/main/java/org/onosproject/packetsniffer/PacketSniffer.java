@@ -119,7 +119,7 @@ public class PacketSniffer {
     private void processLldp(PacketContext context, Ethernet eth)
     {
         log.info(MSG_RECEIVED, eth.getEtherType());
-        log.info(eth.getPayload().toString());
+        log.info(eth.getSourceMAC().toString());
     }
 
     // Indicates whether the specified packet corresponds to LLDP
