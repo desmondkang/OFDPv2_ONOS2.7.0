@@ -20,6 +20,7 @@ import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
+
 import static org.slf4j.LoggerFactory.getLogger;
 
 import org.osgi.service.component.annotations.Activate;
@@ -50,16 +51,14 @@ public class AppComponent {
     private ApplicationId appId;
 
     @Activate
-    protected void activate()
-    {
+    protected void activate() {
         cfgService.registerProperties(getClass());
         appId = coreService.registerApplication("org.onosproject.foo");
         log.info("Started", appId.id());
     }
 
     @Deactivate
-    protected void deactivate()
-    {
+    protected void deactivate() {
         cfgService.unregisterProperties(getClass(), false);
 
         log.info("Stopped");

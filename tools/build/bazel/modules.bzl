@@ -268,6 +268,7 @@ APP_MAP = {
     "//apps/scalablegateway:onos-apps-scalablegateway-oar": [],
     "//apps/sdnip:onos-apps-sdnip-oar": [],
     "//apps/simplefabric:onos-apps-simplefabric-oar": [],
+    "//apps/switchportlookup:onos-apps-switchportlookup-oar": [],
     "//apps/test/cluster-ha:onos-apps-test-cluster-ha-oar": [],
     "//apps/test/demo:onos-apps-test-demo-oar": [],
     "//apps/test/distributed-primitives:onos-apps-test-distributed-primitives-oar": [],

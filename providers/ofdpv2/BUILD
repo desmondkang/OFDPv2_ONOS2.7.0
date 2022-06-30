@@ -1,9 +1,6 @@
-COMPILE_DEPS = CORE_DEPS + NETTY + JACKSON + METRICS + CLI + [
-    #"//providers/lldpcommon_ofdpv2:onos-providers-lldpcommon_ofdpv2",
-]
+COMPILE_DEPS = CORE_DEPS + NETTY + JACKSON + METRICS + CLI
 
 BUNDLES = [
-    #"//providers/lldpcommon_ofdpv2:onos-providers-lldpcommon_ofdpv2",
     "//providers/ofdpv2:onos-providers-ofdpv2",
 ]
 
