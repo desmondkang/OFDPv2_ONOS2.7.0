@@ -179,6 +179,7 @@ public class LinkDiscovery implements TimerTask {
             return false;
         }
 
+        // commenting out this
 //        if (processOnosLldp(packetContext, eth)) {
 //            return true;
 //        }
@@ -227,13 +228,13 @@ public class LinkDiscovery implements TimerTask {
             log.info("Proccessing ONOS LLDP...");
             PortNumber srcPort = portNumber(onoslldp.getPort());
             PortNumber dstPort = packetContext.inPacket().receivedFrom().port();
-            log.info("SrcMAC: {}, SrcPort: {} | dstPort: {}", srcMac, srcPort, dstPort);
 
             String idString = onoslldp.getDeviceString();
             if (!isNullOrEmpty(idString)) {
                 try {
                     DeviceId srcDeviceId = DeviceId.deviceId(idString);
                     DeviceId dstDeviceId = packetContext.inPacket().receivedFrom().deviceId();
+                    log.info("SrcMAC: {}, SrcDeviceID: {}, SrcPort: {} | dstPort: {}", srcMac, srcDeviceId, srcPort, dstPort);
 
                     ConnectPoint src = translateSwitchPort(srcDeviceId, srcPort);
                     ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
@@ -286,10 +287,10 @@ public class LinkDiscovery implements TimerTask {
             }
 
             PortNumber srcPort = sourcePort.get().number();
-            PortNumber dstPort = packetContext.inPacket().receivedFrom().port();
+            PortNumber dstPort = packetContext.inPacket().receivedFrom().port(); // ok
 
             DeviceId srcDeviceId = srcDevice.get().id();
-            DeviceId dstDeviceId = packetContext.inPacket().receivedFrom().deviceId();
+            DeviceId dstDeviceId = packetContext.inPacket().receivedFrom().deviceId(); // ok
 
             if (!sourcePort.get().isEnabled()) {
                 log.debug("Ports are disabled. Cannot create a link between {}/{} and {}/{}",
@@ -451,6 +452,7 @@ public class LinkDiscovery implements TimerTask {
                      portNumber, portDesc, deviceId);
             return null;
         }
+        // "02:eb:96:7F:68:ED"
         ethPacket.setSourceMACAddress(context.fingerprint()).setPayload(lldp);
         return new DefaultOutboundPacket(deviceId,
                                          builder().setOutput(portNumber(portNumber)).build(),

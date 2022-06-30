@@ -126,8 +126,7 @@ import javax.net.ssl.SSLPeerUnverifiedException;
  * Channel handler deals with the switch connection and dispatches
  * switch messages to the appropriate locations.
  */
-class OFChannelHandler extends ChannelInboundHandlerAdapter
-    implements OpenFlowSession {
+class OFChannelHandler extends ChannelInboundHandlerAdapter implements OpenFlowSession {
 
     private static final Logger log = LoggerFactory.getLogger(OFChannelHandler.class);
 
