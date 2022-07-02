@@ -1,4 +1,7 @@
-COMPILE_DEPS = CORE_DEPS + CLI
+COMPILE_DEPS = CORE_DEPS + CLI + [
+    "@openflowj//jar",
+    "//protocols/openflow/api:onos-protocols-openflow-api",
+]
 
 osgi_jar_with_tests(
     karaf_command_packages = ["org.onosproject.switchportlookup.cli"],
