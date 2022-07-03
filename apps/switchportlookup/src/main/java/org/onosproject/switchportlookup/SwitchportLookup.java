@@ -15,15 +15,14 @@
  */
 //author: Desmond Kang
 package org.onosproject.switchportlookup;
+// this program will only work for OF13
 
 import org.onlab.packet.MacAddress;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
 import org.onosproject.net.ConnectPoint;
-import org.onosproject.net.Device;
 import org.onosproject.openflow.controller.Dpid;
 import org.onosproject.openflow.controller.OpenFlowController;
-import org.onosproject.openflow.controller.OpenFlowEventListener;
 import org.onosproject.openflow.controller.OpenFlowMessageListener;
 import org.onosproject.openflow.controller.OpenFlowSwitchListener;
 import org.onosproject.openflow.controller.RoleState;
@@ -32,27 +31,26 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.projectfloodlight.openflow.protocol.OFFactories;
+import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPortDesc;
 import org.projectfloodlight.openflow.protocol.OFPortDescStatsReply;
-import org.projectfloodlight.openflow.protocol.OFPortStatsEntry;
-import org.projectfloodlight.openflow.protocol.OFPortStatsReply;
+import org.projectfloodlight.openflow.protocol.OFPortDescStatsRequest;
 import org.projectfloodlight.openflow.protocol.OFPortStatus;
 import org.projectfloodlight.openflow.protocol.OFStatsReply;
-import org.projectfloodlight.openflow.protocol.OFStatsType;
+import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.slf4j.Logger;
 
 import java.util.List;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 
 import static org.projectfloodlight.openflow.protocol.OFStatsType.PORT_DESC;
-import static org.projectfloodlight.openflow.protocol.OFType.ERROR;
 import static org.projectfloodlight.openflow.protocol.OFType.STATS_REPLY;
+import static org.projectfloodlight.openflow.protocol.OFType.STATS_REQUEST;
 import static org.slf4j.LoggerFactory.getLogger;
 
 @Component(immediate = true)
@@ -64,6 +62,9 @@ public class SwitchportLookup {
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected OpenFlowController controller;
+
+    protected OFVersion ofVersion = OFVersion.OF_13;
+    protected OFFactory factory; //= OFFactories.getFactory(OFVersion.OF_13);
 
     private final InternalDeviceProvider listener = new InternalDeviceProvider();
 
@@ -82,6 +83,8 @@ public class SwitchportLookup {
 
         controller.addListener(listener);
         controller.addMessageListener(listener);
+        initOFFactoryVersion();
+        initCurrentlyDiscoveredSwitches();
 
         log.info("{} Started", appId.id());
     }
@@ -131,6 +134,30 @@ public class SwitchportLookup {
         return MacAddressToDpid;
     }
 
+    private void initOFFactoryVersion()
+    {
+//        log.info("Setting OFVersion...");
+        factory = OFFactories.getFactory(ofVersion);
+//        log.info("OFVersion Set: {}", ofVersion);
+    }
+
+    private void initCurrentlyDiscoveredSwitches() //this should only run once whenever
+                                                //this application starts
+    {
+        controller.getSwitches().forEach(
+                sw -> {
+//                    log.info("generating portdescreq to {}", sw.getDpid());
+                    sw.sendMsg(genHandshakeOFPortDescRequest());
+//                    log.info("portdescreq to {} sent.", sw.getDpid());
+                }
+        );
+    }
+
+    private OFPortDescStatsRequest genHandshakeOFPortDescRequest()
+    {
+        return factory.buildPortDescStatsRequest().build();
+    }
+
     private static void insertMacSetIntoDpidtoMacAddresses(Dpid dpid, HashSet<MacAddress> MacSet)
     {
         for(MacAddress macAddress : MacSet)
@@ -150,28 +177,37 @@ public class SwitchportLookup {
         // check if mac addresses is duplicated
         if(macAddressExisted(macAddress))
         {
-            removeMACfromDpidToMacAddresses(MacAddressToDpid.get(macAddress), macAddress);
+            if(!existInWhereItShouldBe(dpid, macAddress))
+                removeMACfromDpidToMacAddresses(MacAddressToDpid.get(macAddress), macAddress);
         }
         addDpidToMacAddresses(dpid, macAddress);
     }
 
     private static void addDpidToMacAddresses(Dpid dpid, MacAddress macAddress)
     {
-        DpidToMacAddresses.get(dpid).add(macAddress);
-        log.info("macAddress: {} added to dpid: {}", macAddress, dpid);
-        MacAddressToDpid.put(macAddress, dpid);
+        if(existInWhereItShouldBe(dpid, macAddress)) return;
+        else {
+            DpidToMacAddresses.get(dpid).add(macAddress);
+//            log.info("macAddress: {} added to dpid: {}", macAddress, dpid);
+            MacAddressToDpid.put(macAddress, dpid);
+        }
     }
 
     private static void removeMACfromDpidToMacAddresses(Dpid dpid, MacAddress macAddress)
     {
         DpidToMacAddresses.get(dpid).remove(macAddress);
-        log.info("macAddress: {} removed from dpid: {}", macAddress, dpid);
+//        log.info("macAddress: {} removed from dpid: {}", macAddress, dpid);
         MacAddressToDpid.remove(macAddress);
     }
 
     private static boolean macAddressExisted(MacAddress macAddress)
     {
         return MacAddressToDpid.containsKey(macAddress);
+    }
+
+    private static boolean existInWhereItShouldBe(Dpid dpid, MacAddress macAddress)
+    {
+        return DpidToMacAddresses.get(dpid).contains(macAddress);
     }
 
     private static boolean dpidExisted(Dpid dpid)
@@ -200,11 +236,11 @@ public class SwitchportLookup {
 
     private static HashSet<MacAddress> extractMacFromMessage(OFPortDescStatsReply msg)
     {
-        log.info("OFPortDescStatsReply: {}", msg);
+//        log.info("OFPortDescStatsReply: {}", msg);
         HashSet<MacAddress> MacSet = new HashSet<>();
         for(OFPortDesc entry: msg.getEntries())
         {
-            log.info("Entry: {}", entry);
+//            log.info("Entry: {}", entry);
             if(entry.getPortNo() == OFPort.LOCAL) continue; //ignore local port mac
             else{
                 MacAddress mac = new MacAddress(entry.getHwAddr().getBytes());

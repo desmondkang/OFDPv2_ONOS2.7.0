@@ -1,5 +1,9 @@
 COMPILE_DEPS = CORE_DEPS + NETTY + JACKSON + METRICS + CLI
 
+APPS = [
+    "org.onosproject.switchportlookup",
+]
+
 BUNDLES = [
     "//providers/ofdpv2:onos-providers-ofdpv2",
 ]
@@ -18,6 +22,7 @@ onos_app(
     category = "Provider",
     description = "OFDPv2 - Provides link discovery to the ONOS core by eavesdropping on the LLDP control packets.",
     included_bundles = BUNDLES,
+    required_apps = APPS,
     title = "OFDPv2 - LLDP Link Provider",
     url = "http://onosproject.org",
 )
