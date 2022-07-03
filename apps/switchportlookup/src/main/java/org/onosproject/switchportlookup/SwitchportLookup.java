@@ -22,6 +22,8 @@ import org.onosproject.core.CoreService;
 import org.onosproject.net.ConnectPoint;
 import org.onosproject.net.Device;
 import org.onosproject.openflow.controller.Dpid;
+import org.onosproject.openflow.controller.OpenFlowController;
+import org.onosproject.openflow.controller.OpenFlowEventListener;
 import org.onosproject.openflow.controller.OpenFlowSwitchListener;
 import org.onosproject.openflow.controller.RoleState;
 import org.osgi.service.component.annotations.Activate;
@@ -29,6 +31,7 @@ import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
+import org.projectfloodlight.openflow.protocol.OFMessage;
 import org.projectfloodlight.openflow.protocol.OFPortStatus;
 import org.slf4j.Logger;
 
@@ -37,7 +40,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
+import static org.projectfloodlight.openflow.protocol.OFType.ERROR;
 import static org.slf4j.LoggerFactory.getLogger;
 
 @Component(immediate = true)
@@ -47,20 +52,27 @@ public class SwitchportLookup {
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected CoreService coreService;
 
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected OpenFlowController controller;
+
     private final InternalDeviceProvider listener = new InternalDeviceProvider();
 
     private ApplicationId appId; // to constructor
 
     // To store whether the MacAddress existed here before or not
-    private static Map<String, String> MacAddressToDpid = new HashMap<>();
+    private static Map<MacAddress, Dpid> MacAddressToDpid = new HashMap<>();
     // Mapping of dpid to a List of MAC Addresses
-    private static Map<String, HashSet<String>> DpidToMacAddresses = new HashMap<>();
+    private static Map<Dpid, HashSet<MacAddress>> DpidToMacAddresses = new HashMap<>();
     // The one-to-one mapping of MAC Address to Connect Point
-    private static Map<String, ConnectPoint> MacToConnectPoint = new HashMap<>();
+    private static Map<MacAddress, ConnectPoint> MacToConnectPoint = new HashMap<>();
 
     @Activate
     public void activate() {
         appId = coreService.registerApplication("org.onosproject.switchportlookup");
+
+        controller.addListener(listener);
+        controller.addEventListener(listener);
+
         log.info("{} Started", appId.id());
     }
 
@@ -70,11 +82,11 @@ public class SwitchportLookup {
     }
 
     public static boolean addEntry(Dpid dpid, MacAddress macAddress, ConnectPoint connectPoint) {
-        if (MacToConnectPoint.containsKey(macAddress.toString())) {
+        if (MacToConnectPoint.containsKey(macAddress)) {
             log.info("[MacToConnectPoint] replaced ConnectPoint {} with {} " +
-                             "at key: {}", MacToConnectPoint.get(macAddress.toString()), connectPoint, macAddress);
-            MacToConnectPoint.replace(macAddress.toString(), connectPoint);
-            initDpidtoMacAddresses(dpid.toString(), macAddress.toString());
+                             "at key: {}", MacToConnectPoint.get(macAddress), connectPoint, macAddress);
+            MacToConnectPoint.replace(macAddress, connectPoint);
+            initDpidtoMacAddresses(dpid, macAddress);
             return true;
         } else if (MacToConnectPoint.containsValue(connectPoint)) {
             log.warn("connectPoint is existed, cannot be inserted into MacToConnectPoint.");
@@ -82,26 +94,34 @@ public class SwitchportLookup {
         } else // MacToConnectPoint does not have the entry
         {
             log.info("[MacToConnectPoint] entry registered successfully. {}, {}", macAddress, connectPoint);
-            MacToConnectPoint.put(macAddress.toString(), connectPoint);
-            initDpidtoMacAddresses(dpid.toString(), macAddress.toString());
+            MacToConnectPoint.put(macAddress, connectPoint);
+            initDpidtoMacAddresses(dpid, macAddress);
             return true;
         }
     }
 
     public static ConnectPoint getConnectPoint(MacAddress macAddress) {
-        if (MacToConnectPoint.containsKey(macAddress.toString())) {
-            return MacToConnectPoint.get(macAddress.toString());
+        if (MacToConnectPoint.containsKey(macAddress)) {
+            return MacToConnectPoint.get(macAddress);
         } else {
             log.info("Retrieval of ConnectPoint using Mac Address: {} failed", macAddress);
             return null;
         }
     }
 
-    public static Map<String, ConnectPoint> getMacToConnectPoint() {
+    public static Map<MacAddress, ConnectPoint> getMacToConnectPoint() {
         return MacToConnectPoint;
     }
 
-    private static void initDpidtoMacAddresses(String dpid, String macAddress)
+    public static Map<Dpid, HashSet<MacAddress>> getDpidToMacAddresses() {
+        return DpidToMacAddresses;
+    }
+
+    public static Map<MacAddress, Dpid> getMacAddressToDpid() {
+        return MacAddressToDpid;
+    }
+
+    private static void initDpidtoMacAddresses(Dpid dpid, MacAddress macAddress)
     {
         //if the map does not have the dpid
         if(!DpidToMacAddresses.containsKey(dpid))
@@ -117,60 +137,63 @@ public class SwitchportLookup {
         addDpidToMacAddresses(dpid, macAddress);
     }
 
-    private static void addDpidToMacAddresses(String dpid, String macAddress)
+    private static void addDpidToMacAddresses(Dpid dpid, MacAddress macAddress)
     {
         DpidToMacAddresses.get(dpid).add(macAddress);
         log.info("macAddress: {} added to dpid: {}", macAddress, dpid);
         MacAddressToDpid.put(macAddress, dpid);
     }
 
-    private static void removeMACfromDpidToMacAddresses(String dpid, String macAddress)
+    private static void removeMACfromDpidToMacAddresses(Dpid dpid, MacAddress macAddress)
     {
         DpidToMacAddresses.get(dpid).remove(macAddress);
         log.info("macAddress: {} removed from dpid: {}", macAddress, dpid);
         MacAddressToDpid.remove(macAddress);
     }
 
-    private static boolean macAddressExisted(String macAddress)
+    private static boolean macAddressExisted(MacAddress macAddress)
     {
         return MacAddressToDpid.containsKey(macAddress);
     }
 
-    private static boolean dpidExisted(String dpid)
+    private static boolean dpidExisted(Dpid dpid)
     {
         return DpidToMacAddresses.containsKey(dpid);
     }
 
-    private static void eraseDpidfromDatabase(String dpid)
+    private static void eraseDpidfromDatabase(Dpid dpid)
     {
         DpidToMacAddresses.get(dpid).forEach(mac -> {
             MacAddressToDpid.remove(mac);
             MacToConnectPoint.remove(mac);
         });
+        DpidToMacAddresses.remove(dpid);
     }
 
     // Internal Class starts here
-    private class InternalDeviceProvider implements OpenFlowSwitchListener
+    private class InternalDeviceProvider implements OpenFlowSwitchListener, OpenFlowEventListener
     {
 
         @Override
         public void switchAdded(Dpid dpid)
         {
-            if(!dpidExisted(dpid.toString()))
+            log.info("SWITCH ADDED!!!");
+            if(!dpidExisted(dpid))
             {
-                DpidToMacAddresses.put(dpid.toString(), new HashSet<>());
+                DpidToMacAddresses.put(dpid, new HashSet<>());
             }
             else // replace the old dpid
             {
-                eraseDpidfromDatabase(dpid.toString());
-                DpidToMacAddresses.replace(dpid.toString(), new HashSet<>());
+                eraseDpidfromDatabase(dpid);
+                DpidToMacAddresses.put(dpid, new HashSet<>());
             }
         }
 
         @Override
         public void switchRemoved(Dpid dpid)
         {
-            eraseDpidfromDatabase(dpid.toString());
+            log.info("SWITCH REMOVED!!!");
+            eraseDpidfromDatabase(dpid);
         }
 
         @Override
@@ -186,6 +209,18 @@ public class SwitchportLookup {
         @Override
         public void receivedRoleReply(Dpid dpid, RoleState requested, RoleState response) {
 
+        }
+
+        @Override
+        public void handleMessage(Dpid dpid, OFMessage msg) {
+            log.info("Message DETECTED: {}", msg);
+//            try
+//            {
+//                if(msg.getType() == ERROR)
+//            }catch ()
+//            {
+//
+//            }
         }
     }
 }

@@ -9,16 +9,16 @@ import org.onosproject.switchportlookup.SwitchportLookup;
  * Sample Apache Karaf CLI command
  */
 @Service
-@Command(scope = "onos", name = "displaymactoconnectpoint",
+@Command(scope = "onos", name = "displaymactodpid",
         description = "Sample Apache Karaf CLI command")
-public class displayMacToConnectPoint extends AbstractShellCommand {
+public class displayMacToDpid extends AbstractShellCommand {
 
     @Override
     protected void doExecute()
     {
-        print("Printing All entries in MacToConnectPoint...");
-        SwitchportLookup.getMacToConnectPoint().forEach((macAddress, connectPoint) -> {
-            print("MAC: %s --- ConnectPoint: %s", macAddress, connectPoint);
+        print("Printing All entries in MacAddressToDpid...");
+        SwitchportLookup.getMacAddressToDpid().forEach((macAddress, dpid) -> {
+            print("MAC: %s --- DPID: %s", macAddress, dpid);
         });
     }
 

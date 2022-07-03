@@ -928,7 +928,7 @@ public class OpenFlowControllerImpl implements OpenFlowController {
         public void processMessage(Dpid dpid, OFMessage m) {
             processPacket(dpid, m);
 
-            //log.info("OpenFlow Message get: {}", m.toString());
+            //log.info("OpenFlow Message: {}, OFType: {}", m, m.getType());
             for (OpenFlowMessageListener listener : ofMessageListener) {
                 listener.handleIncomingMessage(dpid, m);
             }
