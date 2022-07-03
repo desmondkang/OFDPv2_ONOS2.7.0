@@ -24,6 +24,7 @@ import org.onosproject.net.Device;
 import org.onosproject.openflow.controller.Dpid;
 import org.onosproject.openflow.controller.OpenFlowController;
 import org.onosproject.openflow.controller.OpenFlowEventListener;
+import org.onosproject.openflow.controller.OpenFlowMessageListener;
 import org.onosproject.openflow.controller.OpenFlowSwitchListener;
 import org.onosproject.openflow.controller.RoleState;
 import org.osgi.service.component.annotations.Activate;
@@ -32,7 +33,14 @@ import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.projectfloodlight.openflow.protocol.OFMessage;
+import org.projectfloodlight.openflow.protocol.OFPortDesc;
+import org.projectfloodlight.openflow.protocol.OFPortDescStatsReply;
+import org.projectfloodlight.openflow.protocol.OFPortStatsEntry;
+import org.projectfloodlight.openflow.protocol.OFPortStatsReply;
 import org.projectfloodlight.openflow.protocol.OFPortStatus;
+import org.projectfloodlight.openflow.protocol.OFStatsReply;
+import org.projectfloodlight.openflow.protocol.OFStatsType;
+import org.projectfloodlight.openflow.types.OFPort;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -42,7 +50,9 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
+import static org.projectfloodlight.openflow.protocol.OFStatsType.PORT_DESC;
 import static org.projectfloodlight.openflow.protocol.OFType.ERROR;
+import static org.projectfloodlight.openflow.protocol.OFType.STATS_REPLY;
 import static org.slf4j.LoggerFactory.getLogger;
 
 @Component(immediate = true)
@@ -71,7 +81,7 @@ public class SwitchportLookup {
         appId = coreService.registerApplication("org.onosproject.switchportlookup");
 
         controller.addListener(listener);
-        controller.addEventListener(listener);
+        controller.addMessageListener(listener);
 
         log.info("{} Started", appId.id());
     }
@@ -119,6 +129,14 @@ public class SwitchportLookup {
 
     public static Map<MacAddress, Dpid> getMacAddressToDpid() {
         return MacAddressToDpid;
+    }
+
+    private static void insertMacSetIntoDpidtoMacAddresses(Dpid dpid, HashSet<MacAddress> MacSet)
+    {
+        for(MacAddress macAddress : MacSet)
+        {
+            initDpidtoMacAddresses(dpid, macAddress);
+        }
     }
 
     private static void initDpidtoMacAddresses(Dpid dpid, MacAddress macAddress)
@@ -170,14 +188,41 @@ public class SwitchportLookup {
         DpidToMacAddresses.remove(dpid);
     }
 
+    private static void processOFMultipartReply(Dpid dpid, OFStatsReply msg)
+    {
+//        log.info("Received OFStatsReply: {}", msg);
+        if(msg.getStatsType() == PORT_DESC)
+        {
+//            log.info("Filtered: {}", msg);
+            insertMacSetIntoDpidtoMacAddresses(dpid, extractMacFromMessage((OFPortDescStatsReply) msg));
+        }
+    }
+
+    private static HashSet<MacAddress> extractMacFromMessage(OFPortDescStatsReply msg)
+    {
+        log.info("OFPortDescStatsReply: {}", msg);
+        HashSet<MacAddress> MacSet = new HashSet<>();
+        for(OFPortDesc entry: msg.getEntries())
+        {
+            log.info("Entry: {}", entry);
+            if(entry.getPortNo() == OFPort.LOCAL) continue; //ignore local port mac
+            else{
+                MacAddress mac = new MacAddress(entry.getHwAddr().getBytes());
+                //log.info("Added {} into MacSet.", mac);
+                MacSet.add(mac);
+            }
+        }
+        return MacSet;
+    }
+
     // Internal Class starts here
-    private class InternalDeviceProvider implements OpenFlowSwitchListener, OpenFlowEventListener
+    private class InternalDeviceProvider implements OpenFlowSwitchListener, OpenFlowMessageListener
     {
 
         @Override
         public void switchAdded(Dpid dpid)
         {
-            log.info("SWITCH ADDED!!!");
+//            log.info("SWITCH ADDED: {}", dpid);
             if(!dpidExisted(dpid))
             {
                 DpidToMacAddresses.put(dpid, new HashSet<>());
@@ -192,7 +237,7 @@ public class SwitchportLookup {
         @Override
         public void switchRemoved(Dpid dpid)
         {
-            log.info("SWITCH REMOVED!!!");
+//            log.info("SWITCH REMOVED: {}", dpid);
             eraseDpidfromDatabase(dpid);
         }
 
@@ -211,16 +256,20 @@ public class SwitchportLookup {
 
         }
 
+
         @Override
-        public void handleMessage(Dpid dpid, OFMessage msg) {
-            log.info("Message DETECTED: {}", msg);
-//            try
-//            {
-//                if(msg.getType() == ERROR)
-//            }catch ()
-//            {
-//
-//            }
+        public void handleIncomingMessage(Dpid dpid, OFMessage msg) {
+            //log.info("Incoming Message: {}, type: {}", msg, msg.getType());
+            if(msg.getType() == STATS_REPLY)
+            {
+                // multipart message is reported as STAT
+                processOFMultipartReply(dpid, (OFStatsReply) msg);
+            }
+        }
+
+        @Override
+        public void handleOutgoingMessage(Dpid dpid, List<OFMessage> msgs) {
+
         }
     }
 }
