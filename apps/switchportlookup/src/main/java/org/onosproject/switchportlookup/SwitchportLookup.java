@@ -89,8 +89,14 @@ public class SwitchportLookup {
         log.info("{} Started", appId.id());
     }
 
+    private void cleanup(){
+        controller.removeListener(listener);
+        controller.removeMessageListener(listener);
+    }
+
     @Deactivate
     public void deactivate() {
+        cleanup();
         log.info("{} Stopped", appId.id());
     }
 
@@ -230,6 +236,7 @@ public class SwitchportLookup {
         if(msg.getStatsType() == PORT_DESC)
         {
 //            log.info("Filtered: {}", msg);
+            //OFDPortDescStatsReply is a type of PORT_DESC and subinterface of OFStatsReply
             insertMacSetIntoDpidtoMacAddresses(dpid, extractMacFromMessage((OFPortDescStatsReply) msg));
         }
     }
@@ -299,6 +306,8 @@ public class SwitchportLookup {
             if(msg.getType() == STATS_REPLY)
             {
                 // multipart message is reported as STAT
+                // OFStatsReply is a subinterface of OFMessage and
+                // a type of STATS_REPLY, downcasting
                 processOFMultipartReply(dpid, (OFStatsReply) msg);
             }
         }
