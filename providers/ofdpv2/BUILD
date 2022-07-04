@@ -1,4 +1,8 @@
-COMPILE_DEPS = CORE_DEPS + NETTY + JACKSON + METRICS + CLI
+COMPILE_DEPS = CORE_DEPS + NETTY + JACKSON + METRICS + CLI + [
+    "@openflowj//jar",
+    "//protocols/openflow/api:onos-protocols-openflow-api",
+    "//apps/switchportlookup:onos-apps-switchportlookup",
+]
 
 APPS = [
     "org.onosproject.switchportlookup",

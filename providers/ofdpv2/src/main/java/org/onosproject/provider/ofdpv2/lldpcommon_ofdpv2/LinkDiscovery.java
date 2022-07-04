@@ -23,6 +23,8 @@ import io.netty.util.internal.StringUtil;
 import org.onlab.packet.Ethernet;
 import org.onlab.packet.MacAddress;
 //import org.onlab.packet.ONOSLLDP_ofdpv2;
+import org.onosproject.openflow.controller.Dpid;
+import org.onosproject.openflow.controller.OpenFlowController;
 import org.onosproject.provider.ofdpv2.packet.ONOSLLDP_ofdpv2;
 import org.onlab.util.Timer;
 import org.onlab.util.Tools;
@@ -42,6 +44,10 @@ import org.onosproject.net.link.ProbedLinkProvider;
 import org.onosproject.net.packet.DefaultOutboundPacket;
 import org.onosproject.net.packet.OutboundPacket;
 import org.onosproject.net.packet.PacketContext;
+import org.onosproject.provider.ofdpv2.storage.Switch;
+import org.onosproject.switchportlookup.SwitchportLookup;
+import org.osgi.service.component.annotations.Reference;
+import org.osgi.service.component.annotations.ReferenceCardinality;
 import org.slf4j.Logger;
 
 import java.nio.ByteBuffer;
@@ -67,6 +73,9 @@ import static org.slf4j.LoggerFactory.getLogger;
  * discovery implementation.
  */
 public class LinkDiscovery implements TimerTask {
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected OpenFlowController controller;
 
     private static final String SCHEME_NAME = "linkdiscovery";
     private static final String ETHERNET = "ETHERNET";
@@ -180,9 +189,9 @@ public class LinkDiscovery implements TimerTask {
         }
 
         // commenting out this
-//        if (processOnosLldp(packetContext, eth)) {
-//            return true;
-//        }
+        if (processOnosLldp(packetContext, eth)) {
+            return true;
+        }
 
         if (processLldp(packetContext, eth)) {
             return true;
@@ -203,6 +212,7 @@ public class LinkDiscovery implements TimerTask {
     //Needs hard-work, ONOS is using src mac to verify its own fingerprint
     private boolean processOnosLldp(PacketContext packetContext, Ethernet eth)
     {
+        DeviceService deviceService = context.deviceService();
         ONOSLLDP_ofdpv2 onoslldp = ONOSLLDP_ofdpv2.parseONOSLLDP(eth);
         if (onoslldp != null) {
             Type lt;
@@ -225,7 +235,7 @@ public class LinkDiscovery implements TimerTask {
             MacAddress srcMac = eth.getSourceMAC();
             // Need to find a way to convert srcMac to PortNumber
             // Using one-to-one mapping
-            log.info("Proccessing ONOS LLDP...");
+            //log.info("Processing ONOS LLDP...");
             PortNumber srcPort = portNumber(onoslldp.getPort());
             PortNumber dstPort = packetContext.inPacket().receivedFrom().port();
 
@@ -234,10 +244,19 @@ public class LinkDiscovery implements TimerTask {
                 try {
                     DeviceId srcDeviceId = DeviceId.deviceId(idString);
                     DeviceId dstDeviceId = packetContext.inPacket().receivedFrom().deviceId();
-                    log.info("SrcMAC: {}, SrcDeviceID: {}, SrcPort: {} | dstPort: {}", srcMac, srcDeviceId, srcPort, dstPort);
+//                    log.info("SrcMAC: {}, SrcDeviceID: {}, SrcPort: {} | dstPort: {}", srcMac, srcDeviceId, srcPort, dstPort);
+
+                    MacAddress srcMacAddress = MacAddress.valueOf(
+                            deviceService.getPort(srcDeviceId, srcPort).annotations().value(AnnotationKeys.PORT_MAC)
+                    );
+                    MacAddress dstMacAddress = MacAddress.valueOf(
+                            deviceService.getPort(dstDeviceId, dstPort).annotations().value(AnnotationKeys.PORT_MAC)
+                    );
 
                     ConnectPoint src = translateSwitchPort(srcDeviceId, srcPort);
+                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(srcMacAddress), srcMacAddress, src);
                     ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
+                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(dstMacAddress), dstMacAddress, dst);
                     LinkDescription ld = new DefaultLinkDescription(src, dst, lt);
                     context.providerService().linkDetected(ld); // This is where links truly gets registered
                     context.touchLink(LinkKey.linkKey(src, dst)); // Dont see the point of this yet
@@ -259,25 +278,30 @@ public class LinkDiscovery implements TimerTask {
                     Type.DIRECT : Type.INDIRECT;
 
             DeviceService deviceService = context.deviceService();
-            MacAddress srcChassisId = onoslldp.getChassisIdByMac();
-            String srcPortName = onoslldp.getPortNameString();
+            MacAddress srcMacAddress = eth.getSourceMAC();
+            String srcPortName = onoslldp.getPortNameString(); //need to change
             String srcPortDesc = onoslldp.getPortDescString();
 
-            log.debug("srcChassisId:{}, srcPortName:{}, srcPortDesc:{}", srcChassisId, srcPortName, srcPortDesc);
+            log.debug("srcMacAddress:{}, srcPortName:{}, srcPortDesc:{}", srcMacAddress, srcPortName, srcPortDesc);
 
-            if (srcChassisId == null && srcPortDesc == null) {
+            if (srcMacAddress == null && srcPortDesc == null) {
                 log.warn("there are no valid port id");
                 return false;
             }
 
-            Optional<Device> srcDevice = findSourceDeviceByChassisId(deviceService, srcChassisId);
+            Optional<Device> srcDevice = findSourceDeviceByChassisIdorMacAddress(deviceService, srcMacAddress);
+            //Optional<Device> srcDevice = findSourceDeviceByMacAddress(deviceService, srcMacAddress);
 
             if (srcDevice.isEmpty()) {
-                log.debug("source device not found. srcChassisId value: {}", srcChassisId);
+                log.debug("source device not found. srcChassisId value: {}", srcMacAddress);
                 return false;
             }
-            Optional<Port> sourcePort = findSourcePortByName(
-                    srcPortName == null ? srcPortDesc : srcPortName,
+//            Optional<Port> sourcePort = findSourcePortByName(
+//                    srcPortName == null ? srcPortDesc : srcPortName,
+//                    deviceService,
+//                    srcDevice.get());
+            Optional<Port> sourcePort = findSourcePortByMacAddress(
+                    srcMacAddress,
                     deviceService,
                     srcDevice.get());
 
@@ -298,8 +322,14 @@ public class LinkDiscovery implements TimerTask {
                 return false;
             }
 
+            MacAddress dstMacAddress = MacAddress.valueOf(
+                    deviceService.getPort(dstDeviceId, dstPort).annotations().value(AnnotationKeys.PORT_MAC)
+            );
+
             ConnectPoint src = new ConnectPoint(srcDeviceId, srcPort);
+            SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(srcMacAddress), srcMacAddress, src);
             ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
+            SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(dstMacAddress), dstMacAddress, dst);
 
             DefaultAnnotations annotations = DefaultAnnotations.builder()
                     .set(AnnotationKeys.PROTOCOL, SCHEME_NAME.toUpperCase())
@@ -319,32 +349,69 @@ public class LinkDiscovery implements TimerTask {
         return false;
     }
 
-    private Optional<Device> findSourceDeviceByChassisId(DeviceService deviceService, MacAddress srcChassisId) {
+    private Optional<Device> findSourceDeviceByChassisIdorMacAddress(DeviceService deviceService, MacAddress srcChassisIdorsrcMacAddress) {
         Supplier<Stream<Device>> deviceStream = () ->
                 StreamSupport.stream(deviceService.getAvailableDevices().spliterator(), false);
         Optional<Device> remoteDeviceOptional = deviceStream.get()
                 .filter(device -> device.chassisId() != null
-                        && MacAddress.valueOf(device.chassisId().value()).equals(srcChassisId))
+                        && MacAddress.valueOf(device.chassisId().value()).equals(srcChassisIdorsrcMacAddress))
                 .findAny();
 
         if (remoteDeviceOptional.isPresent()) {
-            log.debug("sourceDevice found by chassis id: {}", srcChassisId);
+            log.debug("sourceDevice found by chassis id: {}", srcChassisIdorsrcMacAddress);
             return remoteDeviceOptional;
         } else {
             remoteDeviceOptional = deviceStream.get().filter(device ->
                     Tools.stream(deviceService.getPorts(device.id()))
                             .anyMatch(port -> port.annotations().keys().contains(AnnotationKeys.PORT_MAC)
                                     && MacAddress.valueOf(port.annotations().value(AnnotationKeys.PORT_MAC))
-                                    .equals(srcChassisId)))
+                                    .equals(srcChassisIdorsrcMacAddress)))
                     .findAny();
             if (remoteDeviceOptional.isPresent()) {
-                log.debug("sourceDevice found by port mac: {}", srcChassisId);
+                log.debug("sourceDevice found by port mac: {}", srcChassisIdorsrcMacAddress);
                 return remoteDeviceOptional;
             } else {
                 return Optional.empty();
             }
         }
     }
+
+//    private Optional<Device> findSourceDeviceByMacAddress(DeviceService deviceService, MacAddress macAddress)
+//    {
+//        log.info("Find SourceDevice by MacAddress: {}", macAddress);
+//        long chassisId = convertDpidIDtoChassisIDLong(SwitchportLookup.getMacAddressToDpid().get(macAddress));
+//        log.info("Source Device ChassisID Found: {}", chassisId);
+//        Supplier<Stream<Device>> deviceStream = () ->
+//                StreamSupport.stream(deviceService.getAvailableDevices().spliterator(), false);
+//        Optional<Device> remoteDeviceOptional = deviceStream.get()
+//                .filter(device -> device.chassisId() != null
+//                        && MacAddress.valueOf(device.chassisId().value()).equals(chassisId))
+//                .findAny();
+//
+//        if (remoteDeviceOptional.isPresent()) {
+//            log.info("sourceDevice found by Mac Address: {}", macAddress);
+//            log.info("sourceDevice: {}, MacAddress: {}",remoteDeviceOptional.get(), macAddress);
+//            return remoteDeviceOptional;
+//        } else {
+//            remoteDeviceOptional = deviceStream.get().filter(device ->
+//                 Tools.stream(deviceService.getPorts(device.id()))
+//                         .anyMatch(port -> port.annotations().keys().contains(AnnotationKeys.PORT_MAC)
+//                                 && MacAddress.valueOf(port.annotations().value(AnnotationKeys.PORT_MAC))
+//                                 .equals(macAddress)))
+//                    .findAny();
+//            if (remoteDeviceOptional.isPresent()) {
+//                log.info("sourceDevice found: {}, MacAddress: {}",remoteDeviceOptional.get(), macAddress);
+//                return remoteDeviceOptional;
+//            } else {
+//                return Optional.empty();
+//            }
+//        }
+//    }
+
+//    private long convertDpidIDtoChassisIDLong(Dpid dpid){
+//        log.info("converting dpid {} to chassisID", dpid);
+//        return controller.getSwitch(dpid).getId();
+//    }
 
     private Optional<Port> findSourcePortByName(String remotePortName,
                                                 DeviceService deviceService,
@@ -358,6 +425,27 @@ public class LinkDiscovery implements TimerTask {
                 .findAny();
 
         if (remotePort.isPresent()) {
+            log.info("RemotePortName: {}, Type: {}",remotePortName, remotePortName.getClass());
+            return remotePort;
+        } else {
+            return Optional.empty();
+        }
+    }
+
+    private Optional<Port> findSourcePortByMacAddress(MacAddress srcMacAddress,
+                                                DeviceService deviceService,
+                                                Device remoteDevice) {
+        if (srcMacAddress == null) {
+            return Optional.empty();
+        }
+        Optional<Port> remotePort = deviceService.getPorts(remoteDevice.id())
+                .stream().filter(port -> Objects.equals(srcMacAddress,
+                                                        MacAddress.valueOf(
+                                                                port.annotations().value(AnnotationKeys.PORT_MAC))
+                )).findAny();
+
+        if (remotePort.isPresent()) {
+            log.info("Port Found: {}",remotePort.get());
             return remotePort;
         } else {
             return Optional.empty();

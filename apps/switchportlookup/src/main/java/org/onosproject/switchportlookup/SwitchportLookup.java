@@ -50,7 +50,6 @@ import java.util.Map;
 
 import static org.projectfloodlight.openflow.protocol.OFStatsType.PORT_DESC;
 import static org.projectfloodlight.openflow.protocol.OFType.STATS_REPLY;
-import static org.projectfloodlight.openflow.protocol.OFType.STATS_REQUEST;
 import static org.slf4j.LoggerFactory.getLogger;
 
 @Component(immediate = true)
@@ -100,43 +99,78 @@ public class SwitchportLookup {
         log.info("{} Stopped", appId.id());
     }
 
-    public static boolean addEntry(Dpid dpid, MacAddress macAddress, ConnectPoint connectPoint) {
-        if (MacToConnectPoint.containsKey(macAddress)) {
-            log.info("[MacToConnectPoint] replaced ConnectPoint {} with {} " +
-                             "at key: {}", MacToConnectPoint.get(macAddress), connectPoint, macAddress);
-            MacToConnectPoint.replace(macAddress, connectPoint);
-            initDpidtoMacAddresses(dpid, macAddress);
-            return true;
-        } else if (MacToConnectPoint.containsValue(connectPoint)) {
-            log.warn("connectPoint is existed, cannot be inserted into MacToConnectPoint.");
-            return false;
-        } else // MacToConnectPoint does not have the entry
+    public static void addEntry(Dpid dpid, MacAddress macAddress, ConnectPoint connectPoint) {
+//        if (MacToConnectPoint.containsKey(macAddress)) {
+//            log.info("[MacToConnectPoint] replaced ConnectPoint {} with {} " +
+//                             "at key: {}", MacToConnectPoint.get(macAddress), connectPoint, macAddress);
+//            MacToConnectPoint.replace(macAddress, connectPoint);
+//            initDpidtoMacAddresses(dpid, macAddress);
+//            return true;
+//        } else if (MacToConnectPoint.containsValue(connectPoint)) {
+//            log.warn("connectPoint is existed, cannot be inserted into MacToConnectPoint.");
+//            return false;
+//        } else // MacToConnectPoint does not have the entry
+//        {
+//            log.info("[MacToConnectPoint] entry registered successfully. {}, {}", macAddress, connectPoint);
+//            MacToConnectPoint.put(macAddress, connectPoint);
+//            initDpidtoMacAddresses(dpid, macAddress);
+//            return true;
+//        }
+        if(addMacAddressToConnectPoint(macAddress, connectPoint))
         {
-            log.info("[MacToConnectPoint] entry registered successfully. {}, {}", macAddress, connectPoint);
-            MacToConnectPoint.put(macAddress, connectPoint);
             initDpidtoMacAddresses(dpid, macAddress);
+        }
+    }
+
+    private static boolean addMacAddressToConnectPoint(MacAddress macAddress, ConnectPoint connectPoint)
+    {
+        if(MacToConnectPoint.containsValue(connectPoint)){
+            if(MacToConnectPoint.get(macAddress).equals(connectPoint))
+            {
+                //log.info("Connect Point is at where it should be. Nothing wrong.");
+            }
+            else {
+                log.warn("Connect Point is currently existed, unable to replace. " +
+                                 "Connect Point: {}", connectPoint);
+            }
+            return false;
+        } else if(MacToConnectPoint.containsKey(macAddress)){
+            log.warn("Mac Address found, is the connect point changed? {} \n" +
+                     "discarding the old connectpoint and replacing with the new one. {}",
+                     MacToConnectPoint.get(macAddress), connectPoint);
+            MacToConnectPoint.replace(macAddress, connectPoint);
+            return true;
+        } else if(!MacToConnectPoint.containsKey(macAddress)){
+//            log.info("[MacToConnectPoint] entry registered successfully. {}, {}", macAddress, connectPoint);
+            MacToConnectPoint.put(macAddress, connectPoint);
             return true;
         }
+        log.warn("All Cases did not match, unknown error are occured. " +
+                 "MacToConnectPoint did not add any entries.");
+        return false;
     }
 
     public static ConnectPoint getConnectPoint(MacAddress macAddress) {
         if (MacToConnectPoint.containsKey(macAddress)) {
             return MacToConnectPoint.get(macAddress);
         } else {
-            log.info("Retrieval of ConnectPoint using Mac Address: {} failed", macAddress);
+//            log.info("Retrieval of ConnectPoint using Mac Address: {} failed", macAddress);
             return null;
         }
     }
 
     public static Map<MacAddress, ConnectPoint> getMacToConnectPoint() {
+        //log.info("Returning MacAddressToConnectPoint: {}", MacToConnectPoint);
         return MacToConnectPoint;
     }
 
     public static Map<Dpid, HashSet<MacAddress>> getDpidToMacAddresses() {
+       // log.info("Returning DpidToMacAddresses: {}", DpidToMacAddresses);
         return DpidToMacAddresses;
     }
 
     public static Map<MacAddress, Dpid> getMacAddressToDpid() {
+      //  log.info("Returning MacAddressToDpid: {}", MacAddressToDpid);
         return MacAddressToDpid;
     }
 
@@ -175,7 +209,7 @@ public class SwitchportLookup {
     private static void initDpidtoMacAddresses(Dpid dpid, MacAddress macAddress)
     {
         //if the map does not have the dpid
-        if(!DpidToMacAddresses.containsKey(dpid))
+        if(dpid != null && !DpidToMacAddresses.containsKey(dpid))
         {
             // register an entry for the dpid
             DpidToMacAddresses.put(dpid, new HashSet<>());
@@ -191,7 +225,7 @@ public class SwitchportLookup {
 
     private static void addDpidToMacAddresses(Dpid dpid, MacAddress macAddress)
     {
-        if(existInWhereItShouldBe(dpid, macAddress)) return;
+        if(dpid == null || existInWhereItShouldBe(dpid, macAddress)) return;
         else {
             DpidToMacAddresses.get(dpid).add(macAddress);
 //            log.info("macAddress: {} added to dpid: {}", macAddress, dpid);

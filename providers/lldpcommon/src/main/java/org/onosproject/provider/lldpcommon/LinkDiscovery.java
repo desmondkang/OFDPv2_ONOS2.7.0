@@ -177,9 +177,9 @@ public class LinkDiscovery implements TimerTask {
             return false;
         }
 
-        if (processOnosLldp(packetContext, eth)) {
-            return true;
-        }
+//        if (processOnosLldp(packetContext, eth)) {
+//            return true;
+//        }
 
         if (processLldp(packetContext, eth)) {
             return true;
@@ -248,7 +248,9 @@ public class LinkDiscovery implements TimerTask {
             DeviceService deviceService = context.deviceService();
             MacAddress srcChassisId = onoslldp.getChassisIdByMac();
             String srcPortName = onoslldp.getPortNameString();
+//            log.info("srcPortName: {}", srcPortName);
             String srcPortDesc = onoslldp.getPortDescString();
+//            log.info("srcPortDesc: {}", srcPortDesc);
 
             log.debug("srcChassisId:{}, srcPortName:{}, srcPortDesc:{}", srcChassisId, srcPortName, srcPortDesc);
 
@@ -274,6 +276,7 @@ public class LinkDiscovery implements TimerTask {
             }
 
             PortNumber srcPort = sourcePort.get().number();
+//            log.info("PortNumber: {}", srcPort);
             PortNumber dstPort = packetContext.inPacket().receivedFrom().port();
 
             DeviceId srcDeviceId = srcDevice.get().id();
@@ -294,6 +297,7 @@ public class LinkDiscovery implements TimerTask {
                     .build();
 
             LinkDescription ld = new DefaultLinkDescription(src, dst, lt, true, annotations);
+//            log.info("LinkDescription: {}", ld);
             try {
                 context.providerService().linkDetected(ld);
                 context.setTtl(LinkKey.linkKey(src, dst), onoslldp.getTtlBySeconds());
@@ -345,6 +349,7 @@ public class LinkDiscovery implements TimerTask {
                 .findAny();
 
         if (remotePort.isPresent()) {
+//            log.info("Port Found: {}", remotePort.get());
             return remotePort;
         } else {
             return Optional.empty();

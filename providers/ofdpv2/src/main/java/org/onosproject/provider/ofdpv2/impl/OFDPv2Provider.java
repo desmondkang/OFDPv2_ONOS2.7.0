@@ -262,6 +262,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
             return defMac;
         }
 
+        // fingerprinting is not important in ofdpv2
         String srcMac = ProbedLinkProvider.fingerprintMac(clusterMetadata.get());
         if (srcMac.equals(defMac))
         {
@@ -429,8 +430,8 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
             return;
         }
         deviceService.getAvailableDevices()
-                .forEach(d -> updateDevice(d)
-                        .ifPresent(ld -> updatePorts(ld, d.id())));
+                .forEach(device -> updateDevice(device)
+                        .ifPresent(linkDiscovery -> updatePorts(linkDiscovery, device.id())));
     }
 
     private boolean isBlacklisted(DeviceId did) {
@@ -579,7 +580,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
     }
 
     /**
-     * Withdraws packet intercepts.
+     * Withdraws packet intercepts. (Cancel Intercepts)
      */
     private void withdrawIntercepts() {
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder();
@@ -603,6 +604,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
     /**
      * Processes device mastership role changes.
      */
+    // Internal Class
     private class InternalRoleListener implements MastershipListener {
         @Override
         public void event(MastershipEvent event) {
@@ -621,6 +623,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
         }
     }
 
+    //Internal Class
     private class DeviceEventProcessor implements Runnable {
 
         DeviceEvent event;
@@ -688,6 +691,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
     /**
      * Processes device events.
      */
+    //Internal Class
     private class InternalDeviceListener implements DeviceListener {
         @Override
         public void event(DeviceEvent event) {
@@ -721,6 +725,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
                 return;
             }
 
+            //process lldp
             if (ld.handleLldp(context)) {
                 context.block();
             }
