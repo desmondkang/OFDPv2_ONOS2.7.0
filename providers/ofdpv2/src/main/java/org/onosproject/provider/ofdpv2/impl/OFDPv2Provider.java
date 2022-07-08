@@ -192,6 +192,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
     private final InternalPacketProcessor packetProcessor = new InternalPacketProcessor();
 
     // Device link discovery helpers.
+    // One DeviceID maps to only one LinkDiscovery?
     protected final Map<DeviceId, LinkDiscovery> discoverers = new ConcurrentHashMap<>();
 
     // Most recent time a tracked link was seen; links are tracked if their

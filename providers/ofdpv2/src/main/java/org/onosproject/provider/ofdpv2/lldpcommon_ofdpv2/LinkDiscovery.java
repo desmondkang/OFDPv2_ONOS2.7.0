@@ -74,9 +74,6 @@ import static org.slf4j.LoggerFactory.getLogger;
  */
 public class LinkDiscovery implements TimerTask {
 
-    @Reference(cardinality = ReferenceCardinality.MANDATORY)
-    protected OpenFlowController controller;
-
     private static final String SCHEME_NAME = "linkdiscovery";
     private static final String ETHERNET = "ETHERNET";
 
@@ -85,7 +82,7 @@ public class LinkDiscovery implements TimerTask {
     private final DeviceId deviceId;
     private final LinkDiscoveryContext context;
 
-    private final Ethernet ethPacket;
+    private final Ethernet lldpEth;
     private final Ethernet bddpEth;
 
     private Timeout timeout;
@@ -93,6 +90,7 @@ public class LinkDiscovery implements TimerTask {
 
     // Set of ports to be probed
     private final Map<Long, String> portMap = Maps.newConcurrentMap();
+
     /**
      * Instantiates discovery manager for the given physical switch. Creates a
      * generic LLDP packet that will be customized for the port it is sent out on.
@@ -106,10 +104,10 @@ public class LinkDiscovery implements TimerTask {
         this.context = context;
 
         //Creating a Generic Ethernet LLDP and BDDP
-        ethPacket = new Ethernet();
-        ethPacket.setEtherType(Ethernet.TYPE_LLDP);
-        ethPacket.setDestinationMACAddress(MacAddress.ONOS_LLDP);
-        ethPacket.setPad(true); //pad this packet to 60bytes minimum, filling with zeroes?
+        lldpEth = new Ethernet();
+        lldpEth.setEtherType(Ethernet.TYPE_LLDP);
+        lldpEth.setDestinationMACAddress(MacAddress.ONOS_LLDP);
+        lldpEth.setPad(true); //pad this packet to 60bytes minimum, filling with zeroes?
 
         bddpEth = new Ethernet();
         bddpEth.setEtherType(Ethernet.TYPE_BSN);
@@ -326,23 +324,27 @@ public class LinkDiscovery implements TimerTask {
                     deviceService.getPort(dstDeviceId, dstPort).annotations().value(AnnotationKeys.PORT_MAC)
             );
 
-            ConnectPoint src = new ConnectPoint(srcDeviceId, srcPort);
-            SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(srcMacAddress), srcMacAddress, src);
-            ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
-            SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(dstMacAddress), dstMacAddress, dst);
-
-            DefaultAnnotations annotations = DefaultAnnotations.builder()
-                    .set(AnnotationKeys.PROTOCOL, SCHEME_NAME.toUpperCase())
-                    .set(AnnotationKeys.LAYER, ETHERNET)
-                    .build();
-
-            LinkDescription ld = new DefaultLinkDescription(src, dst, lt, true, annotations);
             try {
-                context.providerService().linkDetected(ld);
-                context.setTtl(LinkKey.linkKey(src, dst), onoslldp.getTtlBySeconds());
-            } catch (IllegalStateException e) {
-                log.debug("There is a exception during link creation: {}", e.toString()); //added toString()
-                return true;
+                ConnectPoint src = new ConnectPoint(srcDeviceId, srcPort);
+                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(srcMacAddress), srcMacAddress, src);
+                ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
+                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(dstMacAddress), dstMacAddress, dst);
+
+                DefaultAnnotations annotations = DefaultAnnotations.builder()
+                        .set(AnnotationKeys.PROTOCOL, SCHEME_NAME.toUpperCase())
+                        .set(AnnotationKeys.LAYER, ETHERNET)
+                        .build();
+
+                LinkDescription ld = new DefaultLinkDescription(src, dst, lt, true, annotations);
+                try {
+                    context.providerService().linkDetected(ld);
+                    context.setTtl(LinkKey.linkKey(src, dst), onoslldp.getTtlBySeconds());
+                } catch (IllegalStateException e) {
+                    log.debug("There is a exception during link creation: {}", e.toString()); //added toString()
+                    return true;
+                }
+            } catch (Exception e) {
+                log.warn(e.getMessage());
             }
             return true;
         }
@@ -516,10 +518,10 @@ public class LinkDiscovery implements TimerTask {
 //                    portNumber, portDesc, deviceId);
 //            return null;
 //        }
-//        ethPacket.setSourceMACAddress(context.fingerprint()).setPayload(lldp);
+//        lldpEth.setSourceMACAddress(context.fingerprint()).setPayload(lldp);
 //        return new DefaultOutboundPacket(deviceId,
 //                                         builder().setOutput(portNumber(portNumber)).build(),
-//                                         ByteBuffer.wrap(ethPacket.serialize()));
+//                                         ByteBuffer.wrap(lldpEth.serialize()));
 //    }
 
     /**
@@ -541,10 +543,10 @@ public class LinkDiscovery implements TimerTask {
             return null;
         }
         // "02:eb:96:7F:68:ED"
-        ethPacket.setSourceMACAddress(context.fingerprint()).setPayload(lldp);
+        lldpEth.setSourceMACAddress(context.fingerprint()).setPayload(lldp);
         return new DefaultOutboundPacket(deviceId,
                                          builder().setOutput(portNumber(portNumber)).build(),
-                                         ByteBuffer.wrap(ethPacket.serialize()));
+                                         ByteBuffer.wrap(lldpEth.serialize()));
     }
 
     /**
