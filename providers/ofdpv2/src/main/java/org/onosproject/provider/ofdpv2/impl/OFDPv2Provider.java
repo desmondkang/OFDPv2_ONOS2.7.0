@@ -192,7 +192,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
     private final InternalPacketProcessor packetProcessor = new InternalPacketProcessor();
 
     // Device link discovery helpers.
-    // One DeviceID maps to only one LinkDiscovery?
+    // One DeviceID maps to only one LinkDiscovery? YES
     protected final Map<DeviceId, LinkDiscovery> discoverers = new ConcurrentHashMap<>();
 
     // Most recent time a tracked link was seen; links are tracked if their
@@ -254,6 +254,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
         super(new ProviderId("lldp", PROVIDER_NAME));
     }
 
+    // need to place the fingerprint at another place, preferably LLDP optional TLV
     private String buildSrcMac()
     {
         String defMac = ProbedLinkProvider.defaultMac();
@@ -309,6 +310,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
 
     @Deactivate
     public void deactivate() {
+        log.info("Discoverers: {}, count = {}",discoverers, discoverers.size());
         shuttingDown = true;
         if (clusterMetadataService != null) {
             clusterMetadataService.removeListener(metadataListener);
@@ -323,7 +325,6 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
         log.info("Stopped");
     }
 
-    //Large chunks of Internal Classes
     @Modified
     public void modified(ComponentContext context) {
         Dictionary<?, ?> properties = context != null ? context.getProperties() : new Properties();
@@ -539,7 +540,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
             return;
         }
 
-        // check if enabled and turn off discovery?
+        // If the specific port is disabled, remove discoverer on that port.
         if (!port.isEnabled()) {
             removePort(port);
             return;
@@ -564,6 +565,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
         }
     }
 
+    // LLDP and BDDP input from SBI
     /**
      * Requests packet intercepts.
      */
@@ -601,6 +603,11 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
             loadDevices();
         }
     }
+
+    //Self-Added Method starts
+
+
+    //Self-Added Method ends
 
     /**
      * Processes device mastership role changes.

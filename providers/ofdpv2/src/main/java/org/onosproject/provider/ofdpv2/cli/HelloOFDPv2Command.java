@@ -18,6 +18,7 @@ package org.onosproject.provider.ofdpv2.cli;
 import org.apache.karaf.shell.api.action.Command;
 import org.apache.karaf.shell.api.action.lifecycle.Service;
 import org.onosproject.cli.AbstractShellCommand;
+import org.onosproject.provider.ofdpv2.impl.OFDPv2Provider;
 
 /**
  * "Troubleshoot OFDPv2 Build Condition"
@@ -30,6 +31,7 @@ public class HelloOFDPv2Command extends AbstractShellCommand
     @Override
     protected void doExecute() {
         print("Hello %s", "OFDPv2");
+        OFDPv2Provider ofdPv2Provider = new OFDPv2Provider();
     }
 
 }
