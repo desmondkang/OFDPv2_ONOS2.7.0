@@ -65,6 +65,7 @@ import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static org.onosproject.net.AnnotationKeys.PORT_MAC;
 import static org.onosproject.net.AnnotationKeys.PORT_NAME;
+import static org.onosproject.net.PortNumber.LOCAL;
 import static org.onosproject.net.PortNumber.portNumber;
 import static org.onosproject.net.flow.DefaultTrafficTreatment.builder;
 import static org.slf4j.LoggerFactory.getLogger;
@@ -168,10 +169,11 @@ public class LinkDiscovery implements TimerTask {
         // checks if the port is a new port, if yes, initialize LLDP Probing.
         boolean newPort = !containsPort(portNum);
         portMap.put(portNum, portName);
+        log.info("portMap updated/replaced: portNum {} and portName {}", portNum, portName);
 
         boolean isMaster = context.mastershipService().isLocalMaster(deviceId);
         if (newPort && isMaster) {
-            log.debug("Sending initial probe to port {}@{}", port.number().toLong(), deviceId);
+            log.info("Sending initial probe to port {}@{}", port.number().toLong(), deviceId);
             sendProbes(portNum, portName); // slow port
         }
     }
@@ -199,9 +201,9 @@ public class LinkDiscovery implements TimerTask {
         }
 
         // commenting out this
-        if (processOnosLldp(packetContext, eth)) {
-            return true;
-        }
+//        if (processOnosLldp(packetContext, eth)) {
+//            return true;
+//        }
 
         if (processLldp(packetContext, eth)) {
             return true;
@@ -282,6 +284,7 @@ public class LinkDiscovery implements TimerTask {
     // This one is better to modify, src MAC is free
     private boolean processLldp(PacketContext packetContext, Ethernet eth) {
         ONOSLLDP_ofdpv2 onoslldp = ONOSLLDP_ofdpv2.parseLLDP(eth);
+        log.info("Processing LLDP: {}", onoslldp);
         if (onoslldp != null) {
             Type lt = eth.getEtherType() == Ethernet.TYPE_LLDP ?
                     Type.DIRECT : Type.INDIRECT;
@@ -290,18 +293,18 @@ public class LinkDiscovery implements TimerTask {
             String srcPortName = onoslldp.getPortNameString(); //need to change
             String srcPortDesc = onoslldp.getPortDescString();
 
-            log.debug("srcMacAddress:{}, srcPortName:{}, srcPortDesc:{}", srcMacAddress, srcPortName, srcPortDesc);
+            log.info("srcMacAddress:{}, srcPortName:{}, srcPortDesc:{}", srcMacAddress, srcPortName, srcPortDesc);
 
             if (srcMacAddress == null && srcPortDesc == null) {
-                log.warn("there are no valid port id");
+                log.error("there are no valid port id");
                 return false;
             }
 
-            Optional<Device> srcDevice = findSourceDeviceByChassisIdorMacAddress(srcMacAddress);
-            //Optional<Device> srcDevice = findSourceDeviceByMacAddress(srcMacAddress);
+//            Optional<Device> srcDevice = findSourceDeviceByChassisIdorMacAddress(srcMacAddress);
+            Optional<Device> srcDevice = findSourceDeviceByMacAddress(srcMacAddress);
 
             if (srcDevice.isEmpty()) {
-                log.debug("source device not found. srcChassisId value: {}", srcMacAddress);
+                log.error("source device not found. srcChassisId value: {}", srcMacAddress);
                 return false;
             }
 //            Optional<Port> sourcePort = findSourcePortByName(
@@ -311,7 +314,7 @@ public class LinkDiscovery implements TimerTask {
             Optional<Port> sourcePort = findSourcePortByMacAddress(srcMacAddress, srcDevice.get());
 
             if (sourcePort.isEmpty()) {
-                log.debug("source port not found. sourcePort value: {}", sourcePort);
+                log.error("source port not found. sourcePort value: {}", sourcePort);
                 return false;
             }
 
@@ -322,7 +325,7 @@ public class LinkDiscovery implements TimerTask {
             DeviceId dstDeviceId = packetContext.inPacket().receivedFrom().deviceId(); // ok
 
             if (!sourcePort.get().isEnabled()) {
-                log.debug("Ports are disabled. Cannot create a link between {}/{} and {}/{}",
+                log.error("Ports are disabled. Cannot create a link between {}/{} and {}/{}",
                         srcDeviceId, sourcePort.get(), dstDeviceId, dstPort);
                 return false;
             }
@@ -385,37 +388,34 @@ public class LinkDiscovery implements TimerTask {
         }
     }
 
-//    private Optional<Device> findSourceDeviceByMacAddress(DeviceService deviceService, MacAddress macAddress)
-//    {
-//        log.info("Find SourceDevice by MacAddress: {}", macAddress);
-//        long chassisId = convertDpidIDtoChassisIDLong(SwitchportLookup.getMacAddressToDpid().get(macAddress));
-//        log.info("Source Device ChassisID Found: {}", chassisId);
-//        Supplier<Stream<Device>> deviceStream = () ->
-//                StreamSupport.stream(deviceService.getAvailableDevices().spliterator(), false);
-//        Optional<Device> remoteDeviceOptional = deviceStream.get()
-//                .filter(device -> device.chassisId() != null
-//                        && MacAddress.valueOf(device.chassisId().value()).equals(chassisId))
-//                .findAny();
-//
-//        if (remoteDeviceOptional.isPresent()) {
-//            log.info("sourceDevice found by Mac Address: {}", macAddress);
-//            log.info("sourceDevice: {}, MacAddress: {}",remoteDeviceOptional.get(), macAddress);
-//            return remoteDeviceOptional;
-//        } else {
-//            remoteDeviceOptional = deviceStream.get().filter(device ->
-//                 Tools.stream(deviceService.getPorts(device.id()))
-//                         .anyMatch(port -> port.annotations().keys().contains(AnnotationKeys.PORT_MAC)
-//                                 && MacAddress.valueOf(port.annotations().value(AnnotationKeys.PORT_MAC))
-//                                 .equals(macAddress)))
-//                    .findAny();
-//            if (remoteDeviceOptional.isPresent()) {
-//                log.info("sourceDevice found: {}, MacAddress: {}",remoteDeviceOptional.get(), macAddress);
-//                return remoteDeviceOptional;
-//            } else {
-//                return Optional.empty();
-//            }
-//        }
-//    }
+    private Optional<Device> findSourceDeviceByMacAddress(MacAddress macAddress)
+    {
+        log.info("Finding SourceDevice by MacAddress: {}", macAddress);
+
+        if(macAddress.equals(MacAddress.valueOf(context.fingerprint())))
+        {
+            log.warn("Expecting a Switchport Mac Addr but found context fingerprint");
+            return Optional.empty();
+        }
+
+        Supplier<Stream<Device>> deviceStream = () ->
+                StreamSupport.stream(deviceService.getAvailableDevices().spliterator(), false);
+
+        Optional<Device> remoteDeviceOptional = deviceStream.get().filter(device ->
+                 Tools.stream(deviceService.getPorts(device.id()))
+                         .anyMatch(port -> port.annotations().keys().contains(AnnotationKeys.PORT_MAC)
+                                 && MacAddress.valueOf(port.annotations().value(AnnotationKeys.PORT_MAC))
+                                 .equals(macAddress)))
+                .findAny();
+
+        if (remoteDeviceOptional.isPresent()) {
+            log.info("SourceDevice {} found by Mac: {}", remoteDeviceOptional.get(), macAddress);
+            return remoteDeviceOptional;
+        } else {
+            log.error("Unable to find SourceDevice using Mac: {}", macAddress);
+            return Optional.empty();
+        }
+    }
 
 //    private long convertDpidIDtoChassisIDLong(Dpid dpid){
 //        log.info("converting dpid {} to chassisID", dpid);
@@ -442,7 +442,9 @@ public class LinkDiscovery implements TimerTask {
 
     private Optional<Port> findSourcePortByMacAddress(MacAddress srcMacAddress,
                                                 Device remoteDevice) {
+        log.info("Finding SourcePort by Mac: {}", srcMacAddress);
         if (srcMacAddress == null) {
+            log.error("srcMacAddress is null");
             return Optional.empty();
         }
         Optional<Port> remotePort = deviceService.getPorts(remoteDevice.id())
@@ -452,9 +454,10 @@ public class LinkDiscovery implements TimerTask {
                 )).findAny();
 
         if (remotePort.isPresent()) {
-            log.info("Port Found: {}",remotePort.get());
+            log.info("Port {} found using Mac: {}",remotePort.get(), srcMacAddress);
             return remotePort;
         } else {
+            log.warn("Port does not found using Mac: {}",srcMacAddress);
             return Optional.empty();
         }
     }
@@ -486,7 +489,7 @@ public class LinkDiscovery implements TimerTask {
             }
             // Verify if we are still the master
             if (context.mastershipService().isLocalMaster(deviceId)) {
-                log.trace("Sending probes from {}", deviceId);
+                log.info("Sending probes from {}", deviceId);
 //                ImmutableMap.copyOf(portMap).forEach(this::sendProbes); // O(n*p)
                 sendOFDPv2Probes(); // O(n)
 
@@ -520,13 +523,15 @@ public class LinkDiscovery implements TimerTask {
         {
             return null;
         }
-        ONOSLLDP_ofdpv2 lldp = getLinkProbe(portNumber, portDesc);
+        ONOSLLDP_ofdpv2 lldp = getLinkProbe(portNumber, portDesc); // ChassisId and So on
         if (lldp == null) {
             log.warn("Cannot get link probe with portNumber {} and portDesc {} for {} at LLDP packet creation.",
                      portNumber, portDesc, deviceId);
             return null;
         }
-        lldpEth.setSourceMACAddress(context.fingerprint()).setPayload(lldp); // Future Work: Use Optional TLV instead
+        lldpEth.setSourceMACAddress(context.fingerprint()) // Future Work: Use Optional TLV instead
+                .setPayload(lldp);
+
         return new DefaultOutboundPacket(deviceId, // DeviceId
                                          builder().setOutput(portNumber(portNumber)).build(), // Treatment
                                          ByteBuffer.wrap(lldpEth.serialize())); // ByteBuffer
@@ -541,20 +546,19 @@ public class LinkDiscovery implements TimerTask {
 
         if (portMap.isEmpty())
         {
-            log.warn("portMap is empty, quitting OFDPv2OutBoundLLDP Creation.");
+            log.warn("portMap is empty, quitting OFDPv2OutBoundLLDP Creation."); // this line should never run
             return null;
         }
-        ONOSLLDP_ofdpv2 lldp = null;
-        for(Map.Entry<Long, String> entrySet : portMap.entrySet()) {
-            long portNumber = entrySet.getKey();
-            String portDesc = entrySet.getValue();
-            lldp = getLinkProbe(portNumber, portDesc);
+        ONOSLLDP_ofdpv2 lldp = getOFDPv2LinkProbe();
+//        for(Map.Entry<Long, String> entrySet : portMap.entrySet()) {
+//            long portNumber = entrySet.getKey();
+//            String portDesc = entrySet.getValue();
+//            lldp = getLinkProbe(portNumber, portDesc);
             if (lldp == null) {
-                log.warn("Cannot get link probe with portNumber {} and portDesc {} for {} at LLDP packet creation.",
-                         portNumber, portDesc, deviceId);
+                log.warn("Cannot get link probe for device {} at LLDP packet creation.", deviceId);
                 return null;
             }
-        }
+//        }
         lldpEth.setSourceMACAddress(context.fingerprint()).setPayload(lldp); // Future Work: Use Optional TLV instead
 
         TrafficTreatment action_list = generateOFDPv2PacketOutActionList();
@@ -596,6 +600,17 @@ public class LinkDiscovery implements TimerTask {
                                        context.lldpSecret());
     }
 
+    //OFDPv2
+    private ONOSLLDP_ofdpv2 getOFDPv2LinkProbe() {
+        Device device = context.deviceService().getDevice(deviceId);
+        if (device == null) {
+            log.warn("Cannot find the device {}", deviceId);
+            return null;
+        }
+        return ONOSLLDP_ofdpv2.onosSecureLLDP(deviceId.toString(), device.chassisId(), 0,
+                                              context.lldpSecret());
+    }
+
     // v1
     private void sendProbes(Long portNumber, String portDesc)
     {
@@ -630,15 +645,18 @@ public class LinkDiscovery implements TimerTask {
     private void sendOFDPv2Probes()
     {
         if(portMap.isEmpty()) {
+            log.error("portMap is empty, unable to send OFDPv2 Probes");
             return;
         }
         if (context.packetService() == null) {
+            log.error("packetService Context is null");
             return;
         }
-        log.trace("Sending ofdpv2 probe out of {}", deviceId);
+        log.info("Creating ofdpv2 probe for device {}", deviceId);
         OutboundPacket pkt = createOFDPv2OutBoundLldp();
         if (pkt != null)
         {
+            log.info("Emitting OFDPv2 Packet Out: {} from device: {}", pkt, deviceId);
             context.packetService().emit(pkt);
         }
         else
@@ -680,7 +698,7 @@ public class LinkDiscovery implements TimerTask {
      * @return TrafficTreatment that will command device to:
      * 1. modify srcMac,
      * 2. output through respective port, and
-     * 3. repeat until all ports are output.
+     * 3. repeat until all ports are outputted.
      */
     private TrafficTreatment generateOFDPv2PacketOutActionList()
     {
@@ -689,11 +707,17 @@ public class LinkDiscovery implements TimerTask {
 
         for (Port port : deviceService.getPorts(deviceId))
         {
+            if(port.number().equals(LOCAL)) {
+                continue; // Intentionally skip the local port
+            }
             Instruction modifySrcMac = Instructions.modL2Src(MacAddress.valueOf(port.annotations().value(PORT_MAC)));
             Instruction outputPort = Instructions.createOutput(port.number());
             action_list =   builder(action_list) // to save last modified actions
+                            .deferred()
                             .add(modifySrcMac) // to command switch to modify src mac for every operating ports
                             .add(outputPort) // to command switch to output a copy of lldp to that specific port
+//                            .setEthSrc(MacAddress.valueOf(port.annotations().value(PORT_MAC)))
+//                            .setOutput(port.number())
                             .build();
         }
 
