@@ -17,6 +17,7 @@ package org.onosproject.oneping;
 
 import com.google.common.collect.HashMultimap;
 import org.onosproject.net.PortNumber;
+import org.onosproject.net.flow.DefaultFlowRule;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -154,14 +155,24 @@ public class OnePing {
                 .drop()
                 .build();
 
-        flowObjectiveService.forward(deviceId, DefaultForwardingObjective.builder()
+        FlowRule.Builder flowRule = DefaultFlowRule.builder()
                 .fromApp(appId)
+                .forDevice(deviceId)
                 .withSelector(selector)
                 .withTreatment(drop)
-                .withFlag(ForwardingObjective.Flag.VERSATILE)
                 .withPriority(DROP_PRIORITY)
-                .makeTemporary(TIMEOUT_SEC)
-                .add());
+                .makeTemporary(TIMEOUT_SEC);
+
+        flowRuleService.applyFlowRules(flowRule.build());
+
+//        flowObjectiveService.forward(deviceId, DefaultForwardingObjective.builder()
+//                .fromApp(appId)
+//                .withSelector(selector)
+//                .withTreatment(drop)
+//                .withFlag(ForwardingObjective.Flag.VERSATILE)
+//                .withPriority(DROP_PRIORITY)
+//                .makeTemporary(TIMEOUT_SEC)
+//                .add());
     }
 
 

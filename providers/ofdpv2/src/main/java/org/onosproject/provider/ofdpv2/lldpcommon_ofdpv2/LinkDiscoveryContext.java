@@ -18,6 +18,8 @@ package org.onosproject.provider.ofdpv2.lldpcommon_ofdpv2;
 import org.onosproject.mastership.MastershipService;
 import org.onosproject.net.LinkKey;
 import org.onosproject.net.device.DeviceService;
+import org.onosproject.net.flow.FlowRuleService;
+import org.onosproject.net.flowobjective.FlowObjectiveService;
 import org.onosproject.net.link.LinkProviderService;
 import org.onosproject.net.packet.PacketService;
 
@@ -53,6 +55,20 @@ public interface LinkDiscoveryContext {
      * @return the device service interface
      */
     DeviceService deviceService();
+
+    /**
+     * Returns the FlowObjectiveService reference.
+     *
+     * @return flow objective service
+     */
+    FlowObjectiveService flowObjectiveService();
+
+    /**
+     * Returns the FlowRuleService reference.
+     *
+     * @return flow rule service
+     */
+    FlowRuleService flowRuleService();
 
     /**
      * Returns the probe rate in millis.

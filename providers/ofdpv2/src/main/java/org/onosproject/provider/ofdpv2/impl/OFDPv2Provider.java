@@ -45,7 +45,10 @@ import org.onosproject.net.device.DeviceEvent.Type;
 import org.onosproject.net.device.DeviceListener;
 import org.onosproject.net.device.DeviceService;
 import org.onosproject.net.flow.DefaultTrafficSelector;
+import org.onosproject.net.flow.FlowRule;
+import org.onosproject.net.flow.FlowRuleService;
 import org.onosproject.net.flow.TrafficSelector;
+import org.onosproject.net.flowobjective.FlowObjectiveService;
 import org.onosproject.net.link.DefaultLinkDescription;
 import org.onosproject.net.link.LinkProviderRegistry;
 import org.onosproject.net.link.LinkProviderService;
@@ -144,6 +147,12 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected PacketService packetService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected FlowObjectiveService flowObjectiveService;
+
+    @Reference(cardinality = ReferenceCardinality.MANDATORY)
+    protected FlowRuleService flowRuleService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected MastershipService masterService;
@@ -277,10 +286,10 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
 
     @Activate
     public void activate(ComponentContext context) {
+        appId = coreService.registerApplication(PROVIDER_NAME);
         eventExecutor = newSingleThreadScheduledExecutor(groupedThreads("onos/linkevents", "events-%d", log));
         shuttingDown = false;
         cfgService.registerProperties(getClass());
-        appId = coreService.registerApplication(PROVIDER_NAME);
 
         cfgRegistry.addListener(cfgListener);
         factories.forEach(cfgRegistry::registerConfigFactory);
@@ -493,7 +502,7 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
         }
 
         LinkDiscovery ld = discoverers.computeIfAbsent(device.id(),
-                                                       did -> new LinkDiscovery(device.id(), context));
+                                                       did -> new LinkDiscovery(device.id(), appId, context));
         if (ld.isStopped()) {
             ld.start();
         }
@@ -838,6 +847,16 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
         @Override
         public PacketService packetService() {
             return packetService;
+        }
+
+        @Override
+        public FlowObjectiveService flowObjectiveService() {
+            return flowObjectiveService;
+        }
+
+        @Override
+        public FlowRuleService flowRuleService() {
+            return flowRuleService;
         }
 
         @Override
