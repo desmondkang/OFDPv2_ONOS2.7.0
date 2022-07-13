@@ -201,6 +201,7 @@ APP_MAP = {
     "//apps/dhcprelay:onos-apps-dhcprelay-oar": ["tost"],
     "//apps/drivermatrix:onos-apps-drivermatrix-oar": [],
     "//apps/events:onos-apps-events-oar": [],
+    "//apps/fakeping:onos-apps-fakeping-oar": [],
     "//apps/faultmanagement:onos-apps-faultmanagement-oar": [],
     "//apps/flowanalyzer:onos-apps-flowanalyzer-oar": [],
     "//apps/flowspec-api:onos-apps-flowspec-api-oar": [],

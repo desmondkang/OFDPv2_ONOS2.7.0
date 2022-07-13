@@ -16,6 +16,7 @@
 package org.onosproject.oneping;
 
 import com.google.common.collect.HashMultimap;
+import org.onosproject.net.PortNumber;
 import org.osgi.service.component.ComponentContext;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
@@ -76,7 +77,7 @@ public class OnePing {
             "Careful next time, Vasili! Re-enabled ping from {} to {} on {}";
 
     private static final int PRIORITY = 128;
-    private static final int DROP_PRIORITY = 129;
+    private static final int DROP_PRIORITY = 40001;
     private static final int TIMEOUT_SEC = 60; // seconds
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
@@ -148,8 +149,10 @@ public class OnePing {
     private void banPings(DeviceId deviceId, MacAddress src, MacAddress dst) {
         TrafficSelector selector = DefaultTrafficSelector.builder()
                 .matchEthSrc(src).matchEthDst(dst).build();
+
         TrafficTreatment drop = DefaultTrafficTreatment.builder()
-                .drop().build();
+                .drop()
+                .build();
 
         flowObjectiveService.forward(deviceId, DefaultForwardingObjective.builder()
                 .fromApp(appId)

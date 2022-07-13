@@ -22,6 +22,7 @@ import io.netty.util.internal.StringUtil;
 import org.onlab.packet.Ethernet;
 import org.onlab.packet.MacAddress;
 //import org.onlab.packet.ONOSLLDP_ofdpv2;
+import org.onosproject.net.flow.DefaultTrafficTreatment;
 import org.onosproject.net.flow.TrafficTreatment;
 import org.onosproject.net.flow.instructions.Instruction;
 import org.onosproject.net.flow.instructions.Instructions;
@@ -47,7 +48,6 @@ import org.onosproject.net.link.ProbedLinkProvider;
 import org.onosproject.net.packet.DefaultOutboundPacket;
 import org.onosproject.net.packet.OutboundPacket;
 import org.onosproject.net.packet.PacketContext;
-import org.onosproject.provider.ofdpv2.storage.Switch;
 import org.onosproject.switchportlookup.SwitchportLookup;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
@@ -703,26 +703,25 @@ public class LinkDiscovery implements TimerTask {
     private TrafficTreatment generateOFDPv2PacketOutActionList()
     {
         log.info("Generating Action-List for device: {}", deviceId);
-        TrafficTreatment action_list = builder().build(); // blank action_list
+        TrafficTreatment.Builder action_list_draft = DefaultTrafficTreatment.builder(); // blank action_list
 
         for (Port port : deviceService.getPorts(deviceId))
         {
             if(port.number().equals(LOCAL)) {
                 continue; // Intentionally skip the local port
             }
-            Instruction modifySrcMac = Instructions.modL2Src(MacAddress.valueOf(port.annotations().value(PORT_MAC)));
             Instruction outputPort = Instructions.createOutput(port.number());
-            action_list =   builder(action_list) // to save last modified actions
-                            .deferred()
-                            .add(modifySrcMac) // to command switch to modify src mac for every operating ports
-                            .add(outputPort) // to command switch to output a copy of lldp to that specific port
-//                            .setEthSrc(MacAddress.valueOf(port.annotations().value(PORT_MAC)))
-//                            .setOutput(port.number())
-                            .build();
+            Instruction modifySrcMac = Instructions.modL2Src(MacAddress.valueOf(port.annotations().value(PORT_MAC)));
+            action_list_draft
+//                    .add(outputPort) // to command switch to output a copy of lldp to that specific port
+//                    .add(modifySrcMac); // to command switch to modify src mac for every operating ports
+                     .setEthSrc(MacAddress.valueOf(port.annotations().value(PORT_MAC)))
+                     .setOutput(port.number());
+//            break;
         }
 
-        log.info("Action List generated for device {} is: {}", deviceId, action_list);
+        log.info("Action List generated for device {} is: {}", deviceId, action_list_draft.build());
 
-        return action_list;
+        return action_list_draft.build();
     }
 }
