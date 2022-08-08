@@ -6,19 +6,19 @@ import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.switchportlookup.SwitchportLookup;
 
 /**
- * Sample Apache Karaf CLI command
+ * Print out the mapping of Device ID to Mac Address
  */
 @Service
-@Command(scope = "onos", name = "displaymactodpid",
+@Command(scope = "onos", name = "showdeviceidtomacaddress",
         description = "Sample Apache Karaf CLI command")
-public class displayMacToDpid extends AbstractShellCommand {
+public class displayDeviceIdToMacAddresses extends AbstractShellCommand {
 
     @Override
     protected void doExecute()
     {
-        print("Printing All entries in MacAddressToDpid...");
-        SwitchportLookup.getMacAddressToDpid().forEach((macAddress, dpid) -> {
-            print("MAC: %s --- DPID: %s", macAddress, dpid);
+        print("Printing All entries in DeviceIdToMacAddresses...");
+        SwitchportLookup.getDeviceIdToMacAddresses().forEach((deviceId, hashset) -> {
+            print("DeviceID: %s --- MACs: %s", deviceId, hashset);
         });
     }
 

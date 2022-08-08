@@ -6,10 +6,10 @@ import org.onosproject.cli.AbstractShellCommand;
 import org.onosproject.switchportlookup.SwitchportLookup;
 
 /**
- * Sample Apache Karaf CLI command
+ * Print out the mapping of Mac Address to Connect Point
  */
 @Service
-@Command(scope = "onos", name = "displaymactoconnectpoint",
+@Command(scope = "onos", name = "showmactoconnectpoint",
         description = "Sample Apache Karaf CLI command")
 public class displayMacToConnectPoint extends AbstractShellCommand {
 

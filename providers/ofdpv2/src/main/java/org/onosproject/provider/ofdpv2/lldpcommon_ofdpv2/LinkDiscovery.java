@@ -275,9 +275,9 @@ public class LinkDiscovery implements TimerTask {
                     );
 
                     ConnectPoint src = translateSwitchPort(srcDeviceId, srcPort);
-                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(srcMacAddress), srcMacAddress, src);
+                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(srcMacAddress), srcMacAddress, src);
                     ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
-                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(dstMacAddress), dstMacAddress, dst);
+                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(dstMacAddress), dstMacAddress, dst);
                     LinkDescription ld = new DefaultLinkDescription(src, dst, lt);
                     context.providerService().linkDetected(ld); // This is where links truly gets registered
                     context.touchLink(LinkKey.linkKey(src, dst)); // Dont see the point of this yet
@@ -346,9 +346,9 @@ public class LinkDiscovery implements TimerTask {
 
             try {
                 ConnectPoint src = new ConnectPoint(srcDeviceId, srcPort);
-                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(srcMacAddress), srcMacAddress, src);
+                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(srcMacAddress), srcMacAddress, src);
                 ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
-                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDpid().get(dstMacAddress), dstMacAddress, dst);
+                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(dstMacAddress), dstMacAddress, dst);
 
                 DefaultAnnotations annotations = DefaultAnnotations.builder()
                         .set(AnnotationKeys.PROTOCOL, SCHEME_NAME.toUpperCase())
@@ -427,11 +427,6 @@ public class LinkDiscovery implements TimerTask {
         }
     }
 
-//    private long convertDpidIDtoChassisIDLong(Dpid dpid){
-//        log.info("converting dpid {} to chassisID", dpid);
-//        return controller.getSwitch(dpid).getId();
-//    }
-
     private Optional<Port> findSourcePortByName(String remotePortName,
                                                 Device remoteDevice) {
         if (remotePortName == null) {
@@ -501,8 +496,8 @@ public class LinkDiscovery implements TimerTask {
             if (context.mastershipService().isLocalMaster(deviceId)) {
                 log.info("Sending probes from {}", deviceId);
 //                ImmutableMap.copyOf(portMap).forEach(this::sendProbes); // O(n*p)
-                sendOFDPv2AProbes(); // O(n)
-
+//                sendOFDPv2AProbes(); // O(n)
+                sendOFDPv2BProbes(); // O(n)
             }
         } catch (Exception e) {
             // Catch all exceptions to avoid timer task being cancelled
@@ -588,10 +583,6 @@ public class LinkDiscovery implements TimerTask {
             return null;
         }
         ONOSLLDP_ofdpv2 lldp = getOFDPv2LinkProbe();
-//        for(Map.Entry<Long, String> entrySet : portMap.entrySet()) {
-//            long portNumber = entrySet.getKey();
-//            String portDesc = entrySet.getValue();
-//            lldp = getLinkProbe(portNumber, portDesc);
             if (lldp == null) {
                 log.warn("Cannot get link probe for device {} at LLDP packet creation.", deviceId);
                 return null;
@@ -773,9 +764,9 @@ public class LinkDiscovery implements TimerTask {
     }
 
     /**
-     * Creates an ActionList for OFDPv2B Packet Out
+     * Creates an ActionList for OFDPv2A Packet Out
      *
-     * @return Blank TrafficTreatment
+     * @return Output through OFPMP Table
      */
     private TrafficTreatment generateOFDPv2APacketOutActionList()
     {
@@ -806,14 +797,9 @@ public class LinkDiscovery implements TimerTask {
             if(port.number().equals(LOCAL)) {
                 continue; // Intentionally skip the local port
             }
-            Instruction outputPort = Instructions.createOutput(port.number());
-            Instruction modifySrcMac = Instructions.modL2Src(MacAddress.valueOf(port.annotations().value(PORT_MAC)));
             action_list_draft
-//                    .add(outputPort) // to command switch to output a copy of lldp to that specific port
-//                    .add(modifySrcMac); // to command switch to modify src mac for every operating ports
                      .setEthSrc(MacAddress.valueOf(port.annotations().value(PORT_MAC)))
                      .setOutput(port.number());
-//            break;
         }
 
         log.info("Action List generated for device {} is: {}", deviceId, action_list_draft.build());

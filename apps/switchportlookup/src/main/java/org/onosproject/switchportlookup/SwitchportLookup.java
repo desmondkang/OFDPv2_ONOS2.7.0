@@ -15,41 +15,30 @@
  */
 //author: Desmond Kang
 package org.onosproject.switchportlookup;
-// this program will only work for OF13
 
 import org.onlab.packet.MacAddress;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.core.CoreService;
+import org.onosproject.net.AnnotationKeys;
 import org.onosproject.net.ConnectPoint;
-import org.onosproject.openflow.controller.Dpid;
-import org.onosproject.openflow.controller.OpenFlowController;
-import org.onosproject.openflow.controller.OpenFlowMessageListener;
-import org.onosproject.openflow.controller.OpenFlowSwitchListener;
-import org.onosproject.openflow.controller.RoleState;
+import org.onosproject.net.Device;
+import org.onosproject.net.DeviceId;
+import org.onosproject.net.Port;
+import org.onosproject.net.PortNumber;
+import org.onosproject.net.device.DeviceEvent;
+import org.onosproject.net.device.DeviceListener;
+import org.onosproject.net.device.DeviceService;
 import org.osgi.service.component.annotations.Activate;
 import org.osgi.service.component.annotations.Component;
 import org.osgi.service.component.annotations.Deactivate;
 import org.osgi.service.component.annotations.Reference;
 import org.osgi.service.component.annotations.ReferenceCardinality;
-import org.projectfloodlight.openflow.protocol.OFFactories;
-import org.projectfloodlight.openflow.protocol.OFFactory;
-import org.projectfloodlight.openflow.protocol.OFMessage;
-import org.projectfloodlight.openflow.protocol.OFPortDesc;
-import org.projectfloodlight.openflow.protocol.OFPortDescStatsReply;
-import org.projectfloodlight.openflow.protocol.OFPortDescStatsRequest;
-import org.projectfloodlight.openflow.protocol.OFPortStatus;
-import org.projectfloodlight.openflow.protocol.OFStatsReply;
-import org.projectfloodlight.openflow.protocol.OFVersion;
-import org.projectfloodlight.openflow.types.OFPort;
 import org.slf4j.Logger;
 
-import java.util.List;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 
-import static org.projectfloodlight.openflow.protocol.OFStatsType.PORT_DESC;
-import static org.projectfloodlight.openflow.protocol.OFType.STATS_REPLY;
 import static org.slf4j.LoggerFactory.getLogger;
 
 @Component(immediate = true)
@@ -60,37 +49,29 @@ public class SwitchportLookup {
     protected CoreService coreService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
-    protected OpenFlowController controller;
+    protected DeviceService deviceService;
 
-    protected OFVersion ofVersion = OFVersion.OF_13;
-    protected OFFactory factory; //= OFFactories.getFactory(OFVersion.OF_13);
-
-    private final InternalDeviceProvider listener = new InternalDeviceProvider();
+    private final DeviceListener listener = new InternalDeviceListener();
 
     private ApplicationId appId; // to constructor
 
     // To store whether the MacAddress existed here before or not
-    private static Map<MacAddress, Dpid> MacAddressToDpid = new HashMap<>();
-    // Mapping of dpid to a List of MAC Addresses
-    private static Map<Dpid, HashSet<MacAddress>> DpidToMacAddresses = new HashMap<>();
+    private static Map<MacAddress, DeviceId> MacAddressToDeviceId = new HashMap<>();
+    // Mapping of device id to a List of MAC Addresses
+    private static Map<DeviceId, HashSet<MacAddress>> DeviceIdToMacAddresses = new HashMap<>();
     // The one-to-one mapping of MAC Address to Connect Point
     private static Map<MacAddress, ConnectPoint> MacToConnectPoint = new HashMap<>();
 
     @Activate
     public void activate() {
         appId = coreService.registerApplication("org.onosproject.switchportlookup");
-
-        controller.addListener(listener);
-        controller.addMessageListener(listener);
-        initOFFactoryVersion();
-        initCurrentlyDiscoveredSwitches();
-
+        deviceService.addListener(listener);
+        activationInitialization();
         log.info("{} Started", appId.id());
     }
 
     private void cleanup(){
-        controller.removeListener(listener);
-        controller.removeMessageListener(listener);
+        deviceService.removeListener(listener);
     }
 
     @Deactivate
@@ -99,12 +80,20 @@ public class SwitchportLookup {
         log.info("{} Stopped", appId.id());
     }
 
-    public static void addEntry(Dpid dpid, MacAddress macAddress, ConnectPoint connectPoint) {
+    private void activationInitialization(){
+        deviceService.getDevices().forEach(this::deviceAddedHandler);
+    }
+
+    private static void registerNewDeviceID(DeviceId deviceId){
+        DeviceIdToMacAddresses.put(deviceId, new HashSet<>());
+    }
+
+    public static void addEntry(DeviceId deviceId, MacAddress macAddress, ConnectPoint connectPoint) {
 //        if (MacToConnectPoint.containsKey(macAddress)) {
 //            log.info("[MacToConnectPoint] replaced ConnectPoint {} with {} " +
 //                             "at key: {}", MacToConnectPoint.get(macAddress), connectPoint, macAddress);
 //            MacToConnectPoint.replace(macAddress, connectPoint);
-//            initDpidtoMacAddresses(dpid, macAddress);
+//            initDeviceIdtoMacAddresses(deviceId, macAddress);
 //            return true;
 //        } else if (MacToConnectPoint.containsValue(connectPoint)) {
 //            log.warn("connectPoint is existed, cannot be inserted into MacToConnectPoint.");
@@ -113,34 +102,37 @@ public class SwitchportLookup {
 //        {
 //            log.info("[MacToConnectPoint] entry registered successfully. {}, {}", macAddress, connectPoint);
 //            MacToConnectPoint.put(macAddress, connectPoint);
-//            initDpidtoMacAddresses(dpid, macAddress);
+//            initDeviceIdtoMacAddresses(deviceId, macAddress);
 //            return true;
 //        }
         if(addMacAddressToConnectPoint(macAddress, connectPoint))
         {
-            initDpidtoMacAddresses(dpid, macAddress);
+            initDeviceIdtoMacAddresses(deviceId, macAddress);
         }
     }
 
     private static boolean addMacAddressToConnectPoint(MacAddress macAddress, ConnectPoint connectPoint)
     {
-        if(MacToConnectPoint.containsValue(connectPoint)){
+        if(ConnectPointAlreadyExist(connectPoint)){
             if(MacToConnectPoint.get(macAddress).equals(connectPoint))
             {
-                //log.info("Connect Point is at where it should be. Nothing wrong.");
+                log.trace("Connect Point is at where it should be. Nothing wrong.");
             }
-            else {
+            else
+            {
                 log.warn("Connect Point is currently existed, unable to replace. " +
                                  "Connect Point: {}", connectPoint);
             }
             return false;
-        } else if(MacToConnectPoint.containsKey(macAddress)){
+        }
+        else if(MacToConnectPoint.containsKey(macAddress)){
             log.warn("Mac Address found, is the connect point changed? {} \n" +
                      "discarding the old connectpoint and replacing with the new one. {}",
                      MacToConnectPoint.get(macAddress), connectPoint);
             MacToConnectPoint.replace(macAddress, connectPoint);
             return true;
-        } else if(!MacToConnectPoint.containsKey(macAddress)){
+        }
+        else if(!MacToConnectPoint.containsKey(macAddress)){
 //            log.info("[MacToConnectPoint] entry registered successfully. {}, {}", macAddress, connectPoint);
             MacToConnectPoint.put(macAddress, connectPoint);
             return true;
@@ -150,11 +142,11 @@ public class SwitchportLookup {
         return false;
     }
 
-    public static ConnectPoint getConnectPoint(MacAddress macAddress) {
+    public static ConnectPoint getConnectPointByMacAddress(MacAddress macAddress) {
         if (MacToConnectPoint.containsKey(macAddress)) {
             return MacToConnectPoint.get(macAddress);
         } else {
-//            log.info("Retrieval of ConnectPoint using Mac Address: {} failed", macAddress);
+            log.error("Retrieval of ConnectPoint using Mac Address: {} failed", macAddress);
             return null;
         }
     }
@@ -164,191 +156,160 @@ public class SwitchportLookup {
         return MacToConnectPoint;
     }
 
-    public static Map<Dpid, HashSet<MacAddress>> getDpidToMacAddresses() {
-       // log.info("Returning DpidToMacAddresses: {}", DpidToMacAddresses);
-        return DpidToMacAddresses;
+    public static Map<DeviceId, HashSet<MacAddress>> getDeviceIdToMacAddresses() {
+       // log.info("Returning DeviceIdToMacAddresses: {}", DeviceIdToMacAddresses);
+        return DeviceIdToMacAddresses;
     }
 
-    public static Map<MacAddress, Dpid> getMacAddressToDpid() {
-      //  log.info("Returning MacAddressToDpid: {}", MacAddressToDpid);
-        return MacAddressToDpid;
+    public static Map<MacAddress, DeviceId> getMacAddressToDeviceId() {
+      //  log.info("Returning MacAddressToDeviceId: {}", MacAddressToDeviceId);
+        return MacAddressToDeviceId;
     }
 
-    private void initOFFactoryVersion()
-    {
-//        log.info("Setting OFVersion...");
-        factory = OFFactories.getFactory(ofVersion);
-//        log.info("OFVersion Set: {}", ofVersion);
-    }
-
-    private void initCurrentlyDiscoveredSwitches() //this should only run once whenever
-                                                //this application starts
-    {
-        controller.getSwitches().forEach(
-                sw -> {
-//                    log.info("generating portdescreq to {}", sw.getDpid());
-                    sw.sendMsg(genHandshakeOFPortDescRequest());
-//                    log.info("portdescreq to {} sent.", sw.getDpid());
-                }
-        );
-    }
-
-    private OFPortDescStatsRequest genHandshakeOFPortDescRequest()
-    {
-        return factory.buildPortDescStatsRequest().build();
-    }
-
-    private static void insertMacSetIntoDpidtoMacAddresses(Dpid dpid, HashSet<MacAddress> MacSet)
+    private static void insertMacSetIntoDeviceIdtoMacAddresses(DeviceId deviceId, HashSet<MacAddress> MacSet)
     {
         for(MacAddress macAddress : MacSet)
         {
-            initDpidtoMacAddresses(dpid, macAddress);
+            initDeviceIdtoMacAddresses(deviceId, macAddress);
         }
     }
 
-    private static void initDpidtoMacAddresses(Dpid dpid, MacAddress macAddress)
+    private static void initDeviceIdtoMacAddresses(DeviceId deviceId, MacAddress macAddress)
     {
-        //if the map does not have the dpid
-        if(dpid != null && !DpidToMacAddresses.containsKey(dpid))
+        //if the map does not have the deviceId
+        if(deviceId != null && !DeviceIdToMacAddresses.containsKey(deviceId))
         {
-            // register an entry for the dpid
-            DpidToMacAddresses.put(dpid, new HashSet<>());
+            // register an entry for the deviceId
+            registerNewDeviceID(deviceId);
         }
         // check if mac addresses is duplicated
         if(macAddressExisted(macAddress))
         {
-            if(!existInWhereItShouldBe(dpid, macAddress))
-                removeMACfromDpidToMacAddresses(MacAddressToDpid.get(macAddress), macAddress);
+            if(!existInWhereItShouldBe(deviceId, macAddress))
+                removeMACfromDeviceIdToMacAddresses(MacAddressToDeviceId.get(macAddress), macAddress);
         }
-        addDpidToMacAddresses(dpid, macAddress);
+        addDeviceIdToMacAddresses(deviceId, macAddress);
     }
 
-    private static void addDpidToMacAddresses(Dpid dpid, MacAddress macAddress)
+    private static void addDeviceIdToMacAddresses(DeviceId deviceId, MacAddress macAddress)
     {
-        if(dpid == null || existInWhereItShouldBe(dpid, macAddress)) return;
-        else {
-            DpidToMacAddresses.get(dpid).add(macAddress);
-//            log.info("macAddress: {} added to dpid: {}", macAddress, dpid);
-            MacAddressToDpid.put(macAddress, dpid);
+        if(deviceId != null && !existInWhereItShouldBe(deviceId, macAddress))
+        {
+            DeviceIdToMacAddresses.get(deviceId).add(macAddress);
+//            log.info("macAddress: {} added to deviceId: {}", macAddress, deviceId);
+            MacAddressToDeviceId.put(macAddress, deviceId);
         }
     }
 
-    private static void removeMACfromDpidToMacAddresses(Dpid dpid, MacAddress macAddress)
+    private static void removeMACfromDeviceIdToMacAddresses(DeviceId deviceId, MacAddress macAddress)
     {
-        DpidToMacAddresses.get(dpid).remove(macAddress);
-//        log.info("macAddress: {} removed from dpid: {}", macAddress, dpid);
-        MacAddressToDpid.remove(macAddress);
+        DeviceIdToMacAddresses.get(deviceId).remove(macAddress);
+//        log.info("macAddress: {} removed from deviceId: {}", macAddress, deviceId);
+        MacAddressToDeviceId.remove(macAddress);
     }
 
     private static boolean macAddressExisted(MacAddress macAddress)
     {
-        return MacAddressToDpid.containsKey(macAddress);
+        return MacAddressToDeviceId.containsKey(macAddress);
     }
 
-    private static boolean existInWhereItShouldBe(Dpid dpid, MacAddress macAddress)
+    private static boolean existInWhereItShouldBe(DeviceId deviceId, MacAddress macAddress)
     {
-        return DpidToMacAddresses.get(dpid).contains(macAddress);
+        return DeviceIdToMacAddresses.get(deviceId).contains(macAddress);
     }
 
-    private static boolean dpidExisted(Dpid dpid)
+    private static boolean deviceIdExisted(DeviceId deviceId)
     {
-        return DpidToMacAddresses.containsKey(dpid);
+        return DeviceIdToMacAddresses.containsKey(deviceId);
     }
 
-    private static void eraseDpidfromDatabase(Dpid dpid)
+    private static void removeDeviceIdfromDatabase(DeviceId deviceId)
     {
-        DpidToMacAddresses.get(dpid).forEach(mac -> {
-            MacAddressToDpid.remove(mac);
+        DeviceIdToMacAddresses.get(deviceId).forEach(mac -> {
+            MacAddressToDeviceId.remove(mac);
             MacToConnectPoint.remove(mac);
         });
-        DpidToMacAddresses.remove(dpid);
+        DeviceIdToMacAddresses.remove(deviceId);
     }
 
-    private static void processOFMultipartReply(Dpid dpid, OFStatsReply msg)
+    private static void removeMacAddressfromDatabase(MacAddress macAddress)
     {
-//        log.info("Received OFStatsReply: {}", msg);
-        if(msg.getStatsType() == PORT_DESC)
-        {
-//            log.info("Filtered: {}", msg);
-            //OFDPortDescStatsReply is a type of PORT_DESC and subinterface of OFStatsReply
-            insertMacSetIntoDpidtoMacAddresses(dpid, extractMacFromMessage((OFPortDescStatsReply) msg));
-        }
+        DeviceId deviceId = MacAddressToDeviceId.get(macAddress);
+        MacToConnectPoint.remove(macAddress);
+        DeviceIdToMacAddresses.get(deviceId).remove(macAddress);
+        MacAddressToDeviceId.remove(macAddress);
     }
 
-    private static HashSet<MacAddress> extractMacFromMessage(OFPortDescStatsReply msg)
-    {
-//        log.info("OFPortDescStatsReply: {}", msg);
+    private static boolean ConnectPointAlreadyExist(ConnectPoint connectPoint){
+        return MacToConnectPoint.containsValue(connectPoint);
+    }
+
+    private static boolean isNotLocalPort(Port port){
+        return !port.number().equals(PortNumber.LOCAL);
+    }
+
+    private synchronized void deviceAddedHandler(Device device){
+        if (deviceIdExisted(device.id()))
+            removeDeviceIdfromDatabase(device.id());
         HashSet<MacAddress> MacSet = new HashSet<>();
-        for(OFPortDesc entry: msg.getEntries())
-        {
-//            log.info("Entry: {}", entry);
-            if(entry.getPortNo() == OFPort.LOCAL) continue; //ignore local port mac
-            else{
-                MacAddress mac = new MacAddress(entry.getHwAddr().getBytes());
-                //log.info("Added {} into MacSet.", mac);
-                MacSet.add(mac);
-            }
-        }
-        return MacSet;
+        log.info("Getting information of newly added device: {}", device.id());
+        deviceService.getPorts(device.id()).forEach( port -> {
+            if(isNotLocalPort(port))
+                MacSet.add(MacAddress.valueOf(port.annotations().value(AnnotationKeys.PORT_MAC)));
+        });
+        insertMacSetIntoDeviceIdtoMacAddresses(device.id(), MacSet);
+        log.info("Device {} successfully added into database.", device.id());
+    }
+
+    private synchronized void deviceRemovedHandler(Device device){
+        removeDeviceIdfromDatabase(device.id());
+        log.info("Device {} successfully removed from database.", device.id());
+    }
+
+    private synchronized void portAddedHandler(DeviceEvent event){
+        if(isNotLocalPort(event.port()))
+            initDeviceIdtoMacAddresses(event.subject().id(),
+                                       MacAddress.valueOf(event.port()
+                                                                  .annotations()
+                                                                  .value(AnnotationKeys.PORT_MAC)));
+        log.info("Port {} succesfully added into database.", event.port());
+    }
+
+    private synchronized void portRemovedHandler(DeviceEvent event)
+    {
+        MacAddress removedMac = MacAddress.valueOf(event.port().annotations().value(AnnotationKeys.PORT_MAC));
+        removeMacAddressfromDatabase(removedMac);
     }
 
     // Internal Class starts here
-    private class InternalDeviceProvider implements OpenFlowSwitchListener, OpenFlowMessageListener
+    private class InternalDeviceListener implements DeviceListener
     {
-
+        DeviceId deviceId;
         @Override
-        public void switchAdded(Dpid dpid)
-        {
-//            log.info("SWITCH ADDED: {}", dpid);
-            if(!dpidExisted(dpid))
+        public void event(DeviceEvent event) {
+            deviceId = event.subject().id();
+            switch (event.type())
             {
-                DpidToMacAddresses.put(dpid, new HashSet<>());
+                case DEVICE_ADDED:
+//                    log.info("SWITCH ADDED: {}", deviceId);
+                    deviceAddedHandler(event.subject());
+                    break;
+
+                case DEVICE_REMOVED:
+//                    log.info("SWITCH REMOVED: {}", deviceId);
+                    deviceRemovedHandler(event.subject());
+                    break;
+
+                case PORT_ADDED:
+//                    log.info("PORT ADDED: {}", event.port());
+                    portAddedHandler(event);
+                    break;
+
+                case PORT_REMOVED:
+//                    log.info("PORT REMOVED: {}", event.port());
+                    portRemovedHandler(event);
+                    break;
             }
-            else // replace the old dpid
-            {
-                eraseDpidfromDatabase(dpid);
-                DpidToMacAddresses.put(dpid, new HashSet<>());
-            }
-        }
-
-        @Override
-        public void switchRemoved(Dpid dpid)
-        {
-//            log.info("SWITCH REMOVED: {}", dpid);
-            eraseDpidfromDatabase(dpid);
-        }
-
-        @Override
-        public void switchChanged(Dpid dpid) {
-
-        }
-
-        @Override
-        public void portChanged(Dpid dpid, OFPortStatus status) {
-
-        }
-
-        @Override
-        public void receivedRoleReply(Dpid dpid, RoleState requested, RoleState response) {
-
-        }
-
-
-        @Override
-        public void handleIncomingMessage(Dpid dpid, OFMessage msg) {
-            //log.info("Incoming Message: {}, type: {}", msg, msg.getType());
-            if(msg.getType() == STATS_REPLY)
-            {
-                // multipart message is reported as STAT
-                // OFStatsReply is a subinterface of OFMessage and
-                // a type of STATS_REPLY, downcasting
-                processOFMultipartReply(dpid, (OFStatsReply) msg);
-            }
-        }
-
-        @Override
-        public void handleOutgoingMessage(Dpid dpid, List<OFMessage> msgs) {
-
         }
     }
 }
