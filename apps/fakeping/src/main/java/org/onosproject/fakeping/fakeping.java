@@ -160,10 +160,14 @@ public class fakeping {
                         // Output packet
                         builder = DefaultTrafficTreatment.builder();
                         builder.setOutput(inboundPacket.receivedFrom().port());
-                        packetService.emit(new DefaultOutboundPacket(
+
+                        // Packet Out
+                        OutboundPacket packetout = new DefaultOutboundPacket(
                                 inboundPacket.receivedFrom().deviceId(),
                                 builder.build(),
-                                ByteBuffer.wrap(ethernetPacket.serialize())));
+                                ByteBuffer.wrap(ethernetPacket.serialize()));
+
+                        packetService.emit(packetout);
 
 //                        TrafficSelector IcmpRequest = DefaultTrafficSelector.builder()
 //                                .matchEthSrc(sourceMac)

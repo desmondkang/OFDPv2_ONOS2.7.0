@@ -176,13 +176,12 @@ public class LinkDiscovery implements TimerTask {
 
         // checks if the port is a new port, if yes, initialize LLDP Probing.
         boolean newPort = !containsPort(portNum);
-        portMap.put(portNum, portName);
-        log.info("portMap updated/replaced: portNum {} and portName {}", portNum, portName);
-
         boolean isMaster = context.mastershipService().isLocalMaster(deviceId);
         if (newPort && isMaster) {
 //            log.info("Sending initial probe to port {}@{}", port.number().toLong(), deviceId);
 //            sendProbes(portNum, portName); // slow port
+            portMap.put(portNum, portName);
+            log.info("portMap updated/replaced: portNum {} and portName {}", portNum, portName);
             updateOFDPv2AFlowRule();
         }
     }
@@ -194,6 +193,14 @@ public class LinkDiscovery implements TimerTask {
     public void removePort(PortNumber port) {
         portMap.remove(port.toLong());
         updateOFDPv2AFlowRule();
+    }
+
+    /**
+     * check if the port is being found before
+     * @param portNumber the port number
+     */
+    public boolean containsPort(long portNumber) {
+        return portMap.containsKey(portNumber);
     }
 
     /**
@@ -496,8 +503,8 @@ public class LinkDiscovery implements TimerTask {
             if (context.mastershipService().isLocalMaster(deviceId)) {
                 log.info("Sending probes from {}", deviceId);
 //                ImmutableMap.copyOf(portMap).forEach(this::sendProbes); // O(n*p)
-//                sendOFDPv2AProbes(); // O(n)
-                sendOFDPv2BProbes(); // O(n)
+                sendOFDPv2AProbes(); // O(n)
+//                sendOFDPv2BProbes(); // O(n)
             }
         } catch (Exception e) {
             // Catch all exceptions to avoid timer task being cancelled
@@ -747,10 +754,6 @@ public class LinkDiscovery implements TimerTask {
 //                log.warn("Cannot send bddp packet due to packet is null {}", deviceId);
 //            }
 //        }
-    }
-
-    public boolean containsPort(long portNumber) {
-        return portMap.containsKey(portNumber);
     }
 
     /* Port number created from ONOS lldp does not have port name
