@@ -22,6 +22,7 @@ import io.netty.util.internal.StringUtil;
 import org.onlab.packet.Ethernet;
 import org.onlab.packet.MacAddress;
 //import org.onlab.packet.ONOSLLDP_ofdpv2;
+import org.onlab.packet.ONOSLLDP;
 import org.onosproject.core.ApplicationId;
 import org.onosproject.net.flow.DefaultFlowRule;
 import org.onosproject.net.flow.DefaultTrafficSelector;
@@ -97,12 +98,19 @@ public class LinkDiscovery implements TimerTask {
     private Timeout timeout;
     private volatile boolean isStopped;
 
-    private FlowRule flowRule;
+    private FlowRule lldpFlowRule;
+    private FlowRule bddpFlowRule;
     private final int OFDPv2_A_PRIORITY = 45000;
     private boolean ofdpv2_a_installed = false;
 
     // Set of ports to be probed
     private final Map<Long, String> portMap = Maps.newConcurrentMap();
+
+    enum DiscoveryProtocol{
+        OFDP,
+        OFDPv2A,
+        OFDPv2B //Currently not supported
+    }
 
     /**
      * Instantiates discovery manager for the given physical switch. Creates a
@@ -117,7 +125,8 @@ public class LinkDiscovery implements TimerTask {
         this.appId = appId;
         this.context = context;
         this.deviceService = context.deviceService();
-        this.flowRule = null;
+        this.lldpFlowRule = null;
+        this.bddpFlowRule = null;
 //        this.flowRule = DefaultFlowRule.builder().fromApp(appId).build();
 
         //Creating a Generic Ethernet LLDP and BDDP
@@ -140,7 +149,7 @@ public class LinkDiscovery implements TimerTask {
         if (!isStopped) {
             isStopped = true;
             timeout.cancel();
-            removeFlowEntry();
+            removeFlowEntry(this.lldpFlowRule);
         } else {
             log.warn("LinkDiscovery stopped multiple times?");
         }
@@ -179,7 +188,7 @@ public class LinkDiscovery implements TimerTask {
         boolean isMaster = context.mastershipService().isLocalMaster(deviceId);
         if (newPort && isMaster) {
 //            log.info("Sending initial probe to port {}@{}", port.number().toLong(), deviceId);
-//            sendProbes(portNum, portName); // slow port
+//            sendOFDPProbes(portNum, portName); // slow port
             portMap.put(portNum, portName);
             log.info("portMap updated/replaced: portNum {} and portName {}", portNum, portName);
             updateOFDPv2AFlowRule();
@@ -217,7 +226,6 @@ public class LinkDiscovery implements TimerTask {
             return false;
         }
 
-        // commenting out this
 //        if (processOnosLldp(packetContext, eth)) {
 //            return true;
 //        }
@@ -405,8 +413,7 @@ public class LinkDiscovery implements TimerTask {
         }
     }
 
-    private Optional<Device> findSourceDeviceByMacAddress(MacAddress macAddress)
-    {
+    private Optional<Device> findSourceDeviceByMacAddress(MacAddress macAddress) {
         log.info("Finding SourceDevice by MacAddress: {}", macAddress);
 
         if(macAddress.equals(MacAddress.valueOf(context.fingerprint())))
@@ -486,12 +493,12 @@ public class LinkDiscovery implements TimerTask {
     }
 
     /**
-     * Execute this method every t milliseconds. Loops over all ports
-     * labeled as fast and sends out an LLDP. Send out an LLDP on a single slow
-     * port.
+     * Link Discovery Mechanism using OFDP, OFDPv2A and OFDPv2B
+     * Execute this method every t milliseconds.
      *
      * @param t timeout
      */
+    // TODO: Switching mechanism between three OFDP protocols
     @Override
     public void run(Timeout t) {
         try {
@@ -502,7 +509,7 @@ public class LinkDiscovery implements TimerTask {
             // Verify if we are still the master
             if (context.mastershipService().isLocalMaster(deviceId)) {
                 log.info("Sending probes from {}", deviceId);
-//                ImmutableMap.copyOf(portMap).forEach(this::sendProbes); // O(n*p)
+//                ImmutableMap.copyOf(portMap).forEach(this::sendOFDPProbes); // O(n*p)
                 sendOFDPv2AProbes(); // O(n)
 //                sendOFDPv2BProbes(); // O(n)
             }
@@ -523,19 +530,13 @@ public class LinkDiscovery implements TimerTask {
         }
     }
 
-    /**
-     * Creates packet_out LLDP for every specified output port.
-     *
-     * @param portNumber the port
-     * @param portDesc the port description
-     * @return Packet_out message with LLDP data
-     */
+    // LLDP Outbound Packet
     private OutboundPacket createOutBoundLldp(Long portNumber, String portDesc) {
         if (portNumber == null)
         {
             return null;
         }
-        ONOSLLDP_ofdpv2 lldp = getLinkProbe(portNumber, portDesc); // ChassisId and So on
+        ONOSLLDP lldp = getOFDPLinkProbe(portNumber, portDesc); // ChassisId and So on
         if (lldp == null) {
             log.warn("Cannot get link probe with portNumber {} and portDesc {} for {} at LLDP packet creation.",
                      portNumber, portDesc, deviceId);
@@ -548,12 +549,6 @@ public class LinkDiscovery implements TimerTask {
                                          builder().setOutput(portNumber(portNumber)).build(), // Treatment
                                          ByteBuffer.wrap(lldpEth.serialize())); // ByteBuffer
     }
-
-    /**
-     * OFDPv2A - Creates a Plain PacketOut LLDP
-     *
-     * @return Packet_out message with LLDP data only
-     */
     private OutboundPacket createOFDPv2AOutBoundLldp() {
 
         log.info("Creating OFDPv2A OutBound LLDP");
@@ -575,12 +570,6 @@ public class LinkDiscovery implements TimerTask {
                                          action_list, // Blank Treatment
                                          ByteBuffer.wrap(lldpEth.serialize())); // ByteBuffer
     }
-
-    /**
-     * OFDPv2B - Creates single packet_out LLDP for all output port
-     *
-     * @return Packet_out message with LLDP data and Treatment to modify src MacAddress
-     */
     private OutboundPacket createOFDPv2BOutBoundLldp() {
 
         log.info("Creating ofdpv2b outbound lldp");
@@ -603,40 +592,52 @@ public class LinkDiscovery implements TimerTask {
                                          ByteBuffer.wrap(lldpEth.serialize())); // ByteBuffer
     }
 
-    /**
-     * Creates packet_out BDDP for specified output port.
-     *
-     * @param portNumber the port
-     * @param portDesc the port description
-     * @return Packet_out message with LLDP data
-     */
+    // BDDP Outbound Packet
     private OutboundPacket createOutBoundBddp(Long portNumber, String portDesc) {
         if (portNumber == null) {
             return null;
         }
-        ONOSLLDP_ofdpv2 lldp = getLinkProbe(portNumber, portDesc);
-        if (lldp == null) {
+        ONOSLLDP bddp = getOFDPLinkProbe(portNumber, portDesc);
+        if (bddp == null) {
             log.warn("Cannot get link probe with portNumber {} and portDesc {} for {} at BDDP packet creation.",
                     portNumber, portDesc, deviceId);
             return null;
         }
-        bddpEth.setSourceMACAddress(context.fingerprint()).setPayload(lldp);
+        bddpEth.setSourceMACAddress(context.fingerprint()).setPayload(bddp);
         return new DefaultOutboundPacket(deviceId,
                                          builder().setOutput(portNumber(portNumber)).build(),
                                          ByteBuffer.wrap(bddpEth.serialize()));
     }
+    private OutboundPacket createOFDPv2AOutBoundBddp() {
+        log.info("Creating OFDPv2A OutBound BDDP");
+        if (portMap.isEmpty())
+        {
+            log.warn("portMap is empty, quitting OFDPv2OutBoundBBDP Creation."); // this line should never run
+            return null;
+        }
+        ONOSLLDP_ofdpv2 bddp = getOFDPv2LinkProbe();
+        if (bddp == null) {
+            log.warn("Cannot get link probe for device {} at BDDP packet creation.", deviceId);
+            return null;
+        }
+        bddpEth.setSourceMACAddress(context.fingerprint()) // Future Work: Use Optional TLV instead
+                .setPayload(bddp);
+        TrafficTreatment action_list = generateOFDPv2APacketOutActionList();
+        return new DefaultOutboundPacket(deviceId, // DeviceId
+                                         action_list, // Blank Treatment
+                                         ByteBuffer.wrap(bddpEth.serialize())); // ByteBuffer
+    }
 
-    private ONOSLLDP_ofdpv2 getLinkProbe(Long portNumber, String portDesc) {
+    // LLDP/BDDP Link Probe (aka. Eth Payload)
+    private ONOSLLDP getOFDPLinkProbe(Long portNumber, String portDesc) {
         Device device = context.deviceService().getDevice(deviceId);
         if (device == null) {
             log.warn("Cannot find the device {}", deviceId);
             return null;
         }
-        return ONOSLLDP_ofdpv2.onosSecureLLDP(deviceId.toString(), device.chassisId(), portNumber.intValue(), portDesc,
+        return ONOSLLDP.onosSecureLLDP(deviceId.toString(), device.chassisId(), portNumber.intValue(), portDesc,
                                        context.lldpSecret());
     }
-
-    //OFDPv2
     private ONOSLLDP_ofdpv2 getOFDPv2LinkProbe() {
         Device device = context.deviceService().getDevice(deviceId);
         if (device == null) {
@@ -647,9 +648,8 @@ public class LinkDiscovery implements TimerTask {
                                               context.lldpSecret());
     }
 
-    // v1
-    private void sendProbes(Long portNumber, String portDesc)
-    {
+    // Send LLDP and/or BDDP Probes
+    private void sendOFDPProbes(Long portNumber, String portDesc) {
         if (context.packetService() == null) {
             return;
         }
@@ -676,52 +676,40 @@ public class LinkDiscovery implements TimerTask {
             }
         }
     }
-
-    //OFDPv2A
-    private void sendOFDPv2AProbes()
-    {
+    private void sendOFDPv2AProbes() {
         if(portMap.isEmpty()) {
             log.error("portMap is empty, unable to send OFDPv2 Probes");
             return;
         }
-        if (context.packetService() == null) {
-            log.error("packetService Context is null");
-            return;
-        }
-        if(this.flowRule == null) {
-            log.warn("Flow Rule in device {} is empty, re-updating", deviceId);
-            updateOFDPv2AFlowRule();
-        }
-
-        log.info("Creating ofdpv2a probe for device {}", deviceId);
+        //log.info("Creating ofdpv2a probe for device {}", deviceId);
         OutboundPacket pkt = createOFDPv2AOutBoundLldp();
         if (pkt != null)
         {
-            log.info("Emitting OFDPv2 Packet Out: {} from device: {}", pkt, deviceId);
+//            log.info("Emitting OFDPv2 Packet Out: {} from device: {}", pkt, deviceId);
             context.packetService().emit(pkt);
         }
         else
         {
             log.warn("Cannot send lldp packet due to packet is null {}", deviceId);
         }
-        // TODO: After LLDP is done, do for bddp as well.
-//        if (context.useBddp())
-//        {
-//            OutboundPacket bpkt = createOutBoundBddp(portNumber, portDesc);
-//            if (bpkt != null)
-//            {
-//                context.packetService().emit(bpkt);
-//            }
-//            else
-//            {
-//                log.warn("Cannot send bddp packet due to packet is null {}", deviceId);
-//            }
-//        }
-    }
 
-    //OFDPv2B
-    private void sendOFDPv2BProbes()
-    {
+        // BDDP
+        if (context.useBddp())
+        {
+            OutboundPacket bpkt = createOFDPv2AOutBoundBddp();
+            if (bpkt != null)
+            {
+//                log.info("Emitting OFDPv2 Packet Out: {} from device: {}", pkt, deviceId);
+                context.packetService().emit(bpkt);
+            }
+            else
+            {
+                log.warn("Cannot send bddp packet due to packet is null {}", deviceId);
+            }
+        }
+    }
+    private void sendOFDPv2BProbes() {
+        // Currently not Supported
         if(portMap.isEmpty()) {
             log.error("portMap is empty, unable to send OFDPv2 Probes");
             return;
@@ -766,13 +754,13 @@ public class LinkDiscovery implements TimerTask {
         return new ConnectPoint(deviceId, portNumber);
     }
 
+    // OFDPv2 Action List
     /**
      * Creates an ActionList for OFDPv2A Packet Out
      *
-     * @return Output through OFPMP Table
+     * @return Instruction: Output through OFPMP Table
      */
-    private TrafficTreatment generateOFDPv2APacketOutActionList()
-    {
+    private TrafficTreatment generateOFDPv2APacketOutActionList() {
         log.info("Generating OFDPv2A Action-List for device: {}", deviceId);
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder()
                 .setOutput(TABLE); // to be decided by flow TABLE
@@ -781,8 +769,9 @@ public class LinkDiscovery implements TimerTask {
 
         return treatment.build();
     }
-
     /**
+     * TODO: OFDPv2-B is currently unsupported due to unable
+     * TODO: to aggregate multiple instruction in one packetOut
      * Creates an ActionList for OFDPv2 Packet Out
      *
      * @return TrafficTreatment that will command device to:
@@ -790,8 +779,7 @@ public class LinkDiscovery implements TimerTask {
      * 2. output through respective port, and
      * 3. repeat until all ports are outputted.
      */
-    private TrafficTreatment generateOFDPv2BPacketOutActionList()
-    {
+    private TrafficTreatment generateOFDPv2BPacketOutActionList() {
         log.info("Generating Action-List for device: {}", deviceId);
         TrafficTreatment.Builder action_list_draft = DefaultTrafficTreatment.builder(); // blank action_list
 
@@ -810,79 +798,115 @@ public class LinkDiscovery implements TimerTask {
         return action_list_draft.build();
     }
 
-    private boolean updateOFDPv2AFlowRule()
-    {
-        TrafficSelector selector = DefaultTrafficSelector.builder()
-                .matchEthType(Ethernet.TYPE_LLDP)
-                .matchInPort(CONTROLLER)
-                .build();
+    // OFDPv2A FlowRule
+    private boolean updateOFDPv2AFlowRule() {
+        boolean updateSuccess = false;
 
+        // LLDP
+        FlowRule newLldpRule = generateLldpFlowRule();
+
+        if(checkFlowEntryInequality(newLldpRule, this.lldpFlowRule))
+        {
+            if(removeFlowEntry(this.lldpFlowRule))
+            {
+                if(installFlowEntry(newLldpRule))
+                {
+                    this.lldpFlowRule = newLldpRule;
+                    updateSuccess = true;
+                }
+            }
+        }
+
+        // BDDP
+        if(context.useBddp())
+        {
+            FlowRule newBddpRule = generateBddpFlowRule();
+
+            if(checkFlowEntryInequality(newBddpRule, this.bddpFlowRule))
+            {
+                if(removeFlowEntry(this.bddpFlowRule))
+                {
+                    if(installFlowEntry(newBddpRule))
+                    {
+                        this.bddpFlowRule = newBddpRule;
+                    } else updateSuccess = false;
+                } else updateSuccess = false;
+            }
+        }
+
+        // Return Statement
+        if(updateSuccess) return true;
+        else {
+            log.error("Update OFDPv2-A FlowRule failed.");
+            return false;
+        }
+    }
+    private FlowRule generateLldpFlowRule(){
+        TrafficSelector.Builder selector = DefaultTrafficSelector.builder()
+                .matchEthType(Ethernet.TYPE_LLDP)
+                .matchInPort(CONTROLLER);
+
+        TrafficTreatment.Builder treatment = generateOFDPv2ATrafficTreatment();
+
+        return DefaultFlowRule.builder()
+                .forDevice(deviceId)
+                .fromApp(appId)
+                .makePermanent()
+                .withSelector(selector.build())
+                .withTreatment(treatment.build())
+                .withPriority(OFDPv2_A_PRIORITY)
+                .build();
+    }
+    private FlowRule generateBddpFlowRule(){
+        TrafficSelector.Builder selector = DefaultTrafficSelector.builder()
+                .matchEthType(Ethernet.TYPE_BSN)
+                .matchInPort(CONTROLLER);
+
+        TrafficTreatment.Builder treatment = generateOFDPv2ATrafficTreatment();
+
+        return DefaultFlowRule.builder()
+                .forDevice(deviceId)
+                .fromApp(appId)
+                .makePermanent()
+                .withSelector(selector.build())
+                .withTreatment(treatment.build())
+                .withPriority(OFDPv2_A_PRIORITY)
+                .build();
+    }
+    private TrafficTreatment.Builder generateOFDPv2ATrafficTreatment(){
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder();
 
         for (Port port : deviceService.getPorts(deviceId))
         {
-            if(port.number().equals(LOCAL)) {
-                continue; // Intentionally skip the local port
+            if(port.number().equals(LOCAL) && !portMap.containsKey(port.number().toLong())) {
+                continue; // Intentionally skip the local port and disabled port
             }
 
             treatment
                     .setEthSrc(MacAddress.valueOf(port.annotations().value(PORT_MAC)))
                     .setOutput(port.number());
         }
-
-        FlowRule newRule = DefaultFlowRule.builder()
-                .forDevice(deviceId)
-                .fromApp(appId)
-                .makePermanent()
-                .withSelector(selector)
-                .withTreatment(treatment.build())
-                .withPriority(OFDPv2_A_PRIORITY)
-                .build();
-
-        try{
-            if(checkFlowEntryInequality(newRule)){
-//                log.info("Removing old Flow Rule, and installing new one");
-                if(removeFlowEntry())
-                {
-                    if(installFlowEntry(newRule))
-                    {
-                        this.flowRule = newRule;
-                        return true;
-                    }
-                }
-            }else{
-//                log.info("Old Rule is same as New Rule, nothing is done");
-                return true;
-            }
-
-        } catch (Exception e)
-        {
-//            log.error("Flow Rule Installation Failed: {}",e.getMessage());
-        }
-        return false;
+        return treatment;
     }
-
-    private boolean checkFlowEntryInequality(FlowRule flowRule){
-        if(this.flowRule == null){
-//            log.info("current rule is null, they are not equal");
+    private boolean checkFlowEntryInequality(FlowRule newRule, FlowRule oldRule){
+        if(oldRule == null){
+//            log.info("old rule is null, they are not equal");
             return true;
         }
-        if(flowRule == null){
+        if(newRule == null){
 //            log.warn("new rule is null, this should not happen");
             return false;
         }
 //        log.info("Rule Cur: {}", this.flowRule);
 //        log.info("Rule New: {}", flowRule);
-        if(!this.flowRule.exactMatch(flowRule)){
+        if(!oldRule.exactMatch(newRule)){
 //            log.info("They are not equal");
             return true;
         }
         log.warn("Unknown test case occurred during rules comparison");
         return false;
     }
-
-    private boolean installFlowEntry(FlowRule newRule)
-    {
+    private boolean installFlowEntry(FlowRule newRule) {
         if(newRule == null){
             log.warn("New Rule is Null, no rules are installed.");
             return false;
@@ -897,15 +921,13 @@ public class LinkDiscovery implements TimerTask {
         }
         return false;
     }
-
-    private boolean removeFlowEntry()
-    {
-        if(this.flowRule == null) {
+    private boolean removeFlowEntry(FlowRule flowRule) {
+        if(flowRule == null) {
 //            log.info("Flow Rule in device {} is null, nothing is removed", deviceId);
             return true;
         }
         try {
-            context.flowRuleService().removeFlowRules(this.flowRule);
+            context.flowRuleService().removeFlowRules(flowRule);
             return true;
         } catch(Exception e)
         {
