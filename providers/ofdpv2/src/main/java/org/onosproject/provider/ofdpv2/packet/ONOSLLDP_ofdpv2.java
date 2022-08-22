@@ -34,6 +34,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 
 import static org.onlab.packet.LLDPOrganizationalTLV.OUI_LENGTH;
 import static org.onlab.packet.LLDPOrganizationalTLV.SUBTYPE_LENGTH;
@@ -48,12 +49,14 @@ public class ONOSLLDP_ofdpv2 extends LLDP {
 
     public static final String DEFAULT_DEVICE = "INVALID";
     public static final String DEFAULT_NAME = "ONOS Discovery";
+    public static String MASTERSHIP_FINGERPRINT;
 
     protected static final byte NAME_SUBTYPE = 1;
     protected static final byte DEVICE_SUBTYPE = 2;
     protected static final byte DOMAIN_SUBTYPE = 3;
     protected static final byte TIMESTAMP_SUBTYPE = 4;
     protected static final byte SIG_SUBTYPE = 5;
+    protected static final byte FINGERPRINT_SUBTYPE = 6;
 
     private static final short NAME_LENGTH = OUI_LENGTH + SUBTYPE_LENGTH;
     private static final short DEVICE_LENGTH = OUI_LENGTH + SUBTYPE_LENGTH;
@@ -69,6 +72,8 @@ public class ONOSLLDP_ofdpv2 extends LLDP {
     private static final byte CHASSIS_TLV_TYPE = 1;
     private static final byte CHASSIS_TLV_SIZE = 7;
     private static final byte CHASSIS_TLV_SUBTYPE = 4;
+
+    public static final byte FINGERPRINT_TLV_TYPE = 126;
 
     private static final byte TTL_TLV_TYPE = 3;
     private static final byte PORT_DESC_TLV_TYPE = 4;
@@ -115,6 +120,18 @@ public class ONOSLLDP_ofdpv2 extends LLDP {
         devicetlv.setLength((short) (device.length() + DEVICE_LENGTH));
         devicetlv.setSubType(DEVICE_SUBTYPE);
         devicetlv.setOUI(MacAddress.ONOS.oui());
+    }
+
+    public void setMastershipFingerprint(String fingerprint) {
+        LLDPTLV fingerprintTLV = new LLDPTLV();
+        MacAddress mac = MacAddress.valueOf(fingerprint);
+        byte[] mastership = ArrayUtils.addAll(new byte[] {CHASSIS_TLV_SUBTYPE},
+                                              mac.toBytes());
+        fingerprintTLV.setLength(CHASSIS_TLV_SIZE); // Length of Chassis ID == length of Fingerprint
+        fingerprintTLV.setType(FINGERPRINT_TLV_TYPE);
+        fingerprintTLV.setValue(mastership);
+
+        this.addOptionalTLV(fingerprintTLV);
     }
 
     public void setDomainInfo(String domainId) {
@@ -418,11 +435,13 @@ public class ONOSLLDP_ofdpv2 extends LLDP {
      *
      * @param deviceId The device ID as a String
      * @param chassisId The chassis ID of the device
+     * @param fingerprint The context fingerprint of current ONOS Instance
      * @param portNum Port number of port to send probe out of
      * @param secret LLDP secret
      * @return ONOSLLDP probe message
      */
-    public static ONOSLLDP_ofdpv2 onosSecureLLDP(String deviceId, ChassisId chassisId, int portNum, String secret) {
+    public static ONOSLLDP_ofdpv2 onosSecureLLDP(String deviceId, ChassisId chassisId, String fingerprint, int portNum, String secret) {
+        MASTERSHIP_FINGERPRINT = fingerprint;
         ONOSLLDP_ofdpv2 probe = null;
         if (secret == null) {
             probe = new ONOSLLDP_ofdpv2(NAME_SUBTYPE, DEVICE_SUBTYPE);
@@ -432,6 +451,7 @@ public class ONOSLLDP_ofdpv2 extends LLDP {
         probe.setPortId(portNum);
         probe.setDevice(deviceId);
         probe.setChassisId(chassisId);
+        probe.setMastershipFingerprint(fingerprint);
 
         if (secret != null) {
             /* Secure Mode */
@@ -469,14 +489,15 @@ public class ONOSLLDP_ofdpv2 extends LLDP {
      *
      * @param deviceId  The device ID as a String
      * @param chassisId The chassis ID of the device
+     * @param fingerprint The context fingerprint of current ONOS Instance
      * @param portNum   Port number of port to send probe out of
      * @param portDesc  Port description of port to send probe out of
      * @param secret    LLDP secret
      * @return ONOSLLDP probe message
      */
-    public static ONOSLLDP_ofdpv2 onosSecureLLDP(String deviceId, ChassisId chassisId, int portNum, String portDesc,
+    public static ONOSLLDP_ofdpv2 onosSecureLLDP(String deviceId, ChassisId chassisId, String fingerprint, int portNum, String portDesc,
                                                  String secret) {
-        ONOSLLDP_ofdpv2 probe = onosSecureLLDP(deviceId, chassisId, portNum, secret);
+        ONOSLLDP_ofdpv2 probe = onosSecureLLDP(deviceId, chassisId, fingerprint, portNum, secret);
         addPortDesc(probe, portDesc);
         return probe;
     }

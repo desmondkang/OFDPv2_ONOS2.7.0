@@ -20,6 +20,7 @@ import io.netty.util.Timeout;
 import io.netty.util.TimerTask;
 import io.netty.util.internal.StringUtil;
 import org.onlab.packet.Ethernet;
+import org.onlab.packet.LLDPTLV;
 import org.onlab.packet.MacAddress;
 //import org.onlab.packet.ONOSLLDP_ofdpv2;
 import org.onlab.packet.ONOSLLDP;
@@ -55,6 +56,8 @@ import org.onosproject.switchportlookup.SwitchportLookup;
 import org.slf4j.Logger;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -106,11 +109,11 @@ public class LinkDiscovery implements TimerTask {
     // Set of ports to be probed
     private final Map<Long, String> portMap = Maps.newConcurrentMap();
 
-    enum DiscoveryProtocol{
-        OFDP,
-        OFDPv2A,
-        OFDPv2B //Currently not supported
-    }
+//    enum DiscoveryProtocol{
+//        OFDP,
+//        OFDPv2A,
+//        OFDPv2B //Currently not supported
+//    }
 
     /**
      * Instantiates discovery manager for the given physical switch. Creates a
@@ -226,9 +229,9 @@ public class LinkDiscovery implements TimerTask {
             return false;
         }
 
-//        if (processOnosLldp(packetContext, eth)) {
-//            return true;
-//        }
+        if (processOnosLldp(packetContext, eth)) {
+            return true;
+        }
 
         if (processLldp(packetContext, eth)) {
             return true;
@@ -252,8 +255,12 @@ public class LinkDiscovery implements TimerTask {
         ONOSLLDP_ofdpv2 onoslldp = ONOSLLDP_ofdpv2.parseONOSLLDP(eth);
         if (onoslldp != null) {
             Type lt;
-            // Need to find another way for ONOS to deal with mastership
-            if (notMy(eth.getSourceMAC().toString())) {
+            Optional<String> fingerprint = extractMastershipFingerprint(onoslldp);
+            if(fingerprint.isEmpty()){
+                log.error("Unable to retrieve fingerprint, returning false");
+                return false;
+            }
+            if (notMy(fingerprint.get())) {
                 lt = Type.EDGE;
             } else {
                 lt = eth.getEtherType() == Ethernet.TYPE_LLDP ? // If LLDP then p2p links, else BDDP means indirect links
@@ -266,27 +273,27 @@ public class LinkDiscovery implements TimerTask {
                 }
             }
 
-            //srcPort is redundant
-            //need to configure it to verify srcPort through MAC Address
-            MacAddress srcMac = eth.getSourceMAC();
-            // Need to find a way to convert srcMac to PortNumber
-            // Using one-to-one mapping
-            //log.info("Processing ONOS LLDP...");
-            PortNumber srcPort = portNumber(onoslldp.getPort());
+            MacAddress srcMacAddress = eth.getSourceMAC();
+            Optional<Device> srcDevice = findSourceDeviceByMacAddress(srcMacAddress);
+            if (srcDevice.isEmpty()) {
+                log.error("source device not found. srcChassisId value: {}", srcMacAddress);
+                return false;
+            }
+
+            Optional<Port> sourcePort = findSourcePortByMacAddress(srcMacAddress, srcDevice.get());
+            PortNumber srcPort = sourcePort.get().number();
             PortNumber dstPort = packetContext.inPacket().receivedFrom().port();
+
+            DeviceId srcDeviceId = srcDevice.get().id();
+            DeviceId dstDeviceId = packetContext.inPacket().receivedFrom().deviceId();
 
             String idString = onoslldp.getDeviceString();
             if (!isNullOrEmpty(idString)) {
                 try {
-                    DeviceId srcDeviceId = DeviceId.deviceId(idString);
-                    DeviceId dstDeviceId = packetContext.inPacket().receivedFrom().deviceId();
-//                    log.info("SrcMAC: {}, SrcDeviceID: {}, SrcPort: {} | dstPort: {}", srcMac, srcDeviceId, srcPort, dstPort);
-
-                    MacAddress srcMacAddress = MacAddress.valueOf(
-                            deviceService.getPort(srcDeviceId, srcPort).annotations().value(AnnotationKeys.PORT_MAC)
-                    );
                     MacAddress dstMacAddress = MacAddress.valueOf(
-                            deviceService.getPort(dstDeviceId, dstPort).annotations().value(AnnotationKeys.PORT_MAC)
+                            deviceService.getPort(dstDeviceId, dstPort)
+                                    .annotations()
+                                    .value(AnnotationKeys.PORT_MAC)
                     );
 
                     ConnectPoint src = translateSwitchPort(srcDeviceId, srcPort);
@@ -310,6 +317,8 @@ public class LinkDiscovery implements TimerTask {
     private boolean processLldp(PacketContext packetContext, Ethernet eth) {
         ONOSLLDP_ofdpv2 onoslldp = ONOSLLDP_ofdpv2.parseLLDP(eth);
         log.info("Processing LLDP: {}", onoslldp);
+        log.info("DeviceID: {}, \nLLDP: {}, \nDiscovered Optional TLVs: {}", deviceId, onoslldp, onoslldp.getOptionalTLVList());
+
         if (onoslldp != null) {
             Type lt = eth.getEtherType() == Ethernet.TYPE_LLDP ?
                     Type.DIRECT : Type.INDIRECT;
@@ -384,6 +393,26 @@ public class LinkDiscovery implements TimerTask {
             return true;
         }
         return false;
+    }
+
+    private Optional<String> extractMastershipFingerprint(ONOSLLDP_ofdpv2 onoslldp)
+    {
+        Supplier<Stream<LLDPTLV>> opttlvStream = () ->
+                StreamSupport.stream(onoslldp.getOptionalTLVList().spliterator(), false);
+        Optional<LLDPTLV> fingerprint = opttlvStream.get()
+                .filter(lldptlv -> lldptlv.getType() == ONOSLLDP_ofdpv2.FINGERPRINT_TLV_TYPE).findAny();
+
+        if (fingerprint.isPresent()){
+            byte[] bytes = fingerprint.get().getValue();
+            byte[] macByte = new byte[bytes.length-1];
+            for(int i = 0; i < macByte.length; i++) macByte[i] = bytes[i+1];
+            log.info("Mastership Fingerprint TLV Found: {}", new MacAddress(macByte));
+            return Optional.of(new MacAddress(macByte).toString());
+        }
+        else {
+            log.error("Fingerprint not found");
+            return Optional.empty();
+        }
     }
 
     private Optional<Device> findSourceDeviceByChassisIdorMacAddress(MacAddress srcChassisIdorsrcMacAddress) {
@@ -562,6 +591,7 @@ public class LinkDiscovery implements TimerTask {
             log.warn("Cannot get link probe for device {} at LLDP packet creation.", deviceId);
             return null;
         }
+        log.info("LLDP Payload: {}, LLDP Optionals: {}", lldp, lldp.getOptionalTLVList());
         lldpEth.setSourceMACAddress(context.fingerprint()) // Future Work: Use Optional TLV instead
                 .setPayload(lldp);
 
@@ -644,7 +674,10 @@ public class LinkDiscovery implements TimerTask {
             log.warn("Cannot find the device {}", deviceId);
             return null;
         }
-        return ONOSLLDP_ofdpv2.onosSecureLLDP(deviceId.toString(), device.chassisId(), 0,
+        return ONOSLLDP_ofdpv2.onosSecureLLDP(deviceId.toString(),
+                                              device.chassisId(),
+                                              context.fingerprint(),
+                                              0,
                                               context.lldpSecret());
     }
 
