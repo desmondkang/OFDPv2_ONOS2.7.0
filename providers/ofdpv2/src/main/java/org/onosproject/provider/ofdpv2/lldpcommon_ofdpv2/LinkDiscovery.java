@@ -406,7 +406,7 @@ public class LinkDiscovery implements TimerTask {
             byte[] bytes = fingerprint.get().getValue();
             byte[] macByte = new byte[bytes.length-1];
             for(int i = 0; i < macByte.length; i++) macByte[i] = bytes[i+1];
-            log.info("Mastership Fingerprint TLV Found: {}", new MacAddress(macByte));
+            // log.info("Mastership Fingerprint TLV Found: {}", new MacAddress(macByte));
             return Optional.of(new MacAddress(macByte).toString());
         }
         else {
@@ -443,7 +443,7 @@ public class LinkDiscovery implements TimerTask {
     }
 
     private Optional<Device> findSourceDeviceByMacAddress(MacAddress macAddress) {
-        log.info("Finding SourceDevice by MacAddress: {}", macAddress);
+        // log.info("Finding SourceDevice by MacAddress: {}", macAddress);
 
         if(macAddress.equals(MacAddress.valueOf(context.fingerprint())))
         {
@@ -490,7 +490,7 @@ public class LinkDiscovery implements TimerTask {
 
     private Optional<Port> findSourcePortByMacAddress(MacAddress srcMacAddress,
                                                 Device remoteDevice) {
-        log.info("Finding SourcePort by Mac: {}", srcMacAddress);
+        // log.info("Finding SourcePort by Mac: {}", srcMacAddress);
         if (srcMacAddress == null) {
             log.error("srcMacAddress is null");
             return Optional.empty();
