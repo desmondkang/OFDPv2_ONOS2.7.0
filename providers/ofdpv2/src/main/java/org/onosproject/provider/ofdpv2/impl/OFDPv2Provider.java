@@ -149,9 +149,6 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
     protected PacketService packetService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
-    protected FlowObjectiveService flowObjectiveService;
-
-    @Reference(cardinality = ReferenceCardinality.MANDATORY)
     protected FlowRuleService flowRuleService;
 
     @Reference(cardinality = ReferenceCardinality.MANDATORY)
@@ -847,11 +844,6 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
         @Override
         public PacketService packetService() {
             return packetService;
-        }
-
-        @Override
-        public FlowObjectiveService flowObjectiveService() {
-            return flowObjectiveService;
         }
 
         @Override

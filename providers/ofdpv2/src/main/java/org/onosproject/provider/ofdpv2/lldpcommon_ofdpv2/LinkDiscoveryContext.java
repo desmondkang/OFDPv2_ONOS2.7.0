@@ -57,13 +57,6 @@ public interface LinkDiscoveryContext {
     DeviceService deviceService();
 
     /**
-     * Returns the FlowObjectiveService reference.
-     *
-     * @return flow objective service
-     */
-    FlowObjectiveService flowObjectiveService();
-
-    /**
      * Returns the FlowRuleService reference.
      *
      * @return flow rule service

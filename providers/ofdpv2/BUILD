@@ -1,10 +1,5 @@
 COMPILE_DEPS = CORE_DEPS + NETTY + JACKSON + CLI + [
     "//protocols/openflow/api:onos-protocols-openflow-api",
-    "//apps/switchportlookup:onos-apps-switchportlookup",
-]
-
-REQUIRED_APPS = [
-    "org.onosproject.switchportlookup",
 ]
 
 BUNDLES = [
@@ -27,7 +22,6 @@ onos_app(
                   " on the LLDP control packets using OpenFlow Discovery" +
                   " Protocol v2 (OFDPv2) Approach.",
     included_bundles = BUNDLES,
-    required_apps = REQUIRED_APPS,
     title = "OFDPv2 - LLDP Link Provider",
     url = "http://onosproject.org",
 )
