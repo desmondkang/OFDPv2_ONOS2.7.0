@@ -38,7 +38,8 @@ public class displayDpidandDeviceId extends AbstractShellCommand
         print("Printing all deviceID: ");
         for(Device device : devices)
         {
-            print("Chassis ID: %s, Device ID: %s, Serial Number: %s",device.chassisId().value(), device.id(), device.serialNumber());
+            print("Chassis ID: %s, Device ID: %s, Serial Number: %s",
+                  device.chassisId().value(), device.id(), device.serialNumber());
         }
 
         OpenFlowController controller = get(OpenFlowController.class);

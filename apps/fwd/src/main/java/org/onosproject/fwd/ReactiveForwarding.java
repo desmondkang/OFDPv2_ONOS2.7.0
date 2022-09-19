@@ -124,7 +124,7 @@ import static org.onosproject.fwd.OsgiPropertyConstants.INHERIT_FLOW_TREATMENT_D
 import static org.slf4j.LoggerFactory.getLogger;
 
 /**
- * Sample reactive forwarding application.
+ * Sample react         ive forwarding application.
  */
 @Component(
     immediate = true,

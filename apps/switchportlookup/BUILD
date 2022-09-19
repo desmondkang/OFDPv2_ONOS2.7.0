@@ -11,8 +11,8 @@ osgi_jar_with_tests(
 
 onos_app(
     app_name = "org.onosproject.switchportlookup",
-    category = "Traffic Engineering",
-    description = "One-to-one mapping of switchport mac address to a connectpoint",
+    category = "Debug",
+    description = "One-to-one mapping of switchport MAC Address to their DeviceID",
     title = "Switchport Lookup",
     url = "http://onosproject.org",
 )

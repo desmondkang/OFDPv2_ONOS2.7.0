@@ -116,7 +116,6 @@ PROVIDER_APP_MAP = {
     "//providers/openflow/app:onos-providers-openflow-app-oar": ["seba", "sona"],
     "//providers/openflow/app_ofdpv2:onos-providers-openflow-app_ofdpv2-oar": ["seba", "sona"],
     "//providers/openflow/base:onos-providers-openflow-base-oar": ["seba", "sona"],
-    "//providers/openflow/base_ofdpv2:onos-providers-openflow-base_ofdpv2-oar": ["seba", "sona"],
     "//providers/openflow/message:onos-providers-openflow-message-oar": ["seba", "sona"],
     "//providers/ovsdb:onos-providers-ovsdb-oar": ["sona"],
     "//providers/ovsdb/host:onos-providers-ovsdb-host-oar": ["sona"],

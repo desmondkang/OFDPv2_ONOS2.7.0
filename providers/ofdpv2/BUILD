@@ -1,5 +1,4 @@
-COMPILE_DEPS = CORE_DEPS + NETTY + JACKSON + METRICS + CLI + [
-    "@openflowj//jar",
+COMPILE_DEPS = CORE_DEPS + NETTY + JACKSON + CLI + [
     "//protocols/openflow/api:onos-protocols-openflow-api",
     "//apps/switchportlookup:onos-apps-switchportlookup",
 ]
@@ -24,7 +23,9 @@ osgi_jar_with_tests(
 onos_app(
     app_name = "org.onosproject.ofdpv2provider",
     category = "Provider",
-    description = "OFDPv2 - Provides link discovery to the ONOS core by eavesdropping on the LLDP control packets.",
+    description = "Provides link discovery to the ONOS core by eavesdropping" +
+                  " on the LLDP control packets using OpenFlow Discovery" +
+                  " Protocol v2 (OFDPv2) Approach.",
     included_bundles = BUNDLES,
     required_apps = REQUIRED_APPS,
     title = "OFDPv2 - LLDP Link Provider",

@@ -297,9 +297,9 @@ public class LinkDiscovery implements TimerTask {
                     );
 
                     ConnectPoint src = translateSwitchPort(srcDeviceId, srcPort);
-                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(srcMacAddress), srcMacAddress, src);
+//                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(srcMacAddress), srcMacAddress, src);
                     ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
-                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(dstMacAddress), dstMacAddress, dst);
+//                    SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(dstMacAddress), dstMacAddress, dst);
                     LinkDescription ld = new DefaultLinkDescription(src, dst, lt);
                     context.providerService().linkDetected(ld); // This is where links truly gets registered
                     context.touchLink(LinkKey.linkKey(src, dst)); // Dont see the point of this yet
@@ -370,9 +370,9 @@ public class LinkDiscovery implements TimerTask {
 
             try {
                 ConnectPoint src = new ConnectPoint(srcDeviceId, srcPort);
-                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(srcMacAddress), srcMacAddress, src);
+//                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(srcMacAddress), srcMacAddress, src);
                 ConnectPoint dst = new ConnectPoint(dstDeviceId, dstPort);
-                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(dstMacAddress), dstMacAddress, dst);
+//                SwitchportLookup.addEntry(SwitchportLookup.getMacAddressToDeviceId().get(dstMacAddress), dstMacAddress, dst);
 
                 DefaultAnnotations annotations = DefaultAnnotations.builder()
                         .set(AnnotationKeys.PROTOCOL, SCHEME_NAME.toUpperCase())
@@ -956,7 +956,7 @@ public class LinkDiscovery implements TimerTask {
     }
     private boolean removeFlowEntry(FlowRule flowRule) {
         if(flowRule == null) {
-//            log.info("Flow Rule in device {} is null, nothing is removed", deviceId);
+            log.info("Flow Rule in device {} is null, nothing is removed", deviceId);
             return true;
         }
         try {
