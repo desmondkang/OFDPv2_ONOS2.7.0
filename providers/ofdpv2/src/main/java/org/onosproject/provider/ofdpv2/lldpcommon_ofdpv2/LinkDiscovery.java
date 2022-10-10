@@ -26,6 +26,7 @@ import org.onosproject.core.ApplicationId;
 import org.onosproject.net.flow.DefaultFlowRule;
 import org.onosproject.net.flow.DefaultTrafficSelector;
 import org.onosproject.net.flow.DefaultTrafficTreatment;
+import org.onosproject.net.flow.FlowEntry;
 import org.onosproject.net.flow.FlowRule;
 import org.onosproject.net.flow.TrafficSelector;
 import org.onosproject.net.flow.TrafficTreatment;
@@ -82,7 +83,7 @@ public class LinkDiscovery implements TimerTask {
 
     private final Logger log = getLogger(getClass());
 
-    private final DeviceId deviceId;
+    public final DeviceId deviceId;
     private final LinkDiscoveryContext context;
 
     private final DeviceService deviceService;
@@ -92,10 +93,10 @@ public class LinkDiscovery implements TimerTask {
     private TrafficTreatment actionList;
 
     private Timeout timeout;
-    private volatile boolean isStopped;
+    private boolean isStopped = true;
 
-    private FlowRule lldpFlowRule;
-    private FlowRule bddpFlowRule;
+    private FlowRule lldpFlowRule = null;
+    private FlowRule bddpFlowRule = null;
     private final int OFDPv2_A_PRIORITY = 45000;
 
     // Set of ports to be probed
@@ -106,16 +107,15 @@ public class LinkDiscovery implements TimerTask {
      * generic LLDP packet that will be customized for the port it is sent out on.
      * Starts the the timer for the discovery process.
      *
-     * @param deviceId  the physical switch
+     * @param deviceId the physical switch
      * @param context discovery context
      */
     public LinkDiscovery(DeviceId deviceId, ApplicationId appId, LinkDiscoveryContext context) {
+//        log.info("New Link Discoverer Started: {}", deviceId);
         this.deviceId = deviceId;
         this.appId = appId;
         this.context = context;
         this.deviceService = context.deviceService();
-        this.lldpFlowRule = null;
-        this.bddpFlowRule = null;
         this.actionList = generateOFDPv2APacketOutActionList();
 
         //Creating a Generic Ethernet LLDP and BDDP
@@ -129,17 +129,16 @@ public class LinkDiscovery implements TimerTask {
         bddpEth.setDestinationMACAddress(MacAddress.BROADCAST);
         bddpEth.setPad(true); //pad this packet to 60bytes minimum, filling with zeroes?
 
-        isStopped = true;
         start();
         log.debug("Started discovery manager for switch {}", deviceId);
     }
 
     public synchronized void stop() {
         if (!isStopped) {
+            log.info("Stopping Link Discovery of device: {}", deviceId);
             isStopped = true;
             timeout.cancel();
-            removeFlowEntry(this.lldpFlowRule);
-            removeFlowEntry(this.bddpFlowRule);
+            context.flowRuleService().purgeFlowRules(deviceId, appId);
         } else {
             log.warn("LinkDiscovery stopped multiple times?");
         }
@@ -177,7 +176,7 @@ public class LinkDiscovery implements TimerTask {
         if (newPort && isMaster) {
             portMap.put(portNum, portName);
             log.trace("portMap updated/replaced: portNum {} and portName {}", portNum, portName);
-            updateOFDPv2AFlowRule();
+            updateFlowRule();
         }
     }
 
@@ -186,8 +185,10 @@ public class LinkDiscovery implements TimerTask {
      * @param port the port number
      */
     public void removePort(PortNumber port) {
-        portMap.remove(port.toLong());
-        updateOFDPv2AFlowRule();
+        if(portMap.containsKey(port.toLong())) {
+            portMap.remove(port.toLong());
+            updateFlowRule();
+        }
     }
 
     /**
@@ -257,7 +258,7 @@ public class LinkDiscovery implements TimerTask {
             MacAddress srcMacAddress = eth.getSourceMAC();
             Optional<Device> srcDevice = findSourceDeviceByMacAddress(srcMacAddress);
             if (srcDevice.isEmpty()) {
-                log.error("source device not found. srcChassisId value: {}", srcMacAddress);
+                log.error("source device not found from {}. srcChassisId value: {}", deviceId, srcMacAddress);
                 return false;
             }
 
@@ -375,7 +376,7 @@ public class LinkDiscovery implements TimerTask {
     private Optional<Device> findSourceDeviceByMacAddress(MacAddress macAddress) {
         if(macAddress.equals(MacAddress.valueOf(context.fingerprint())))
         {
-            log.error("Expecting a Switchport Mac Addr but found context fingerprint");
+            log.error("Expecting a Switchport Mac Addr but found context fingerprint at {}", deviceId);
             return Optional.empty();
         }
 
@@ -457,6 +458,7 @@ public class LinkDiscovery implements TimerTask {
         } finally {
             // if it has not been stopped - re-schedule itself
             if (!isStopped()) {
+//                log.info("Starting new discovery cycle {}, isStopped: {}", deviceId, isStopped());
                 timeout = t.timer().newTimeout(this, context.probeRate(), MILLISECONDS);
             }
         }
@@ -566,47 +568,16 @@ public class LinkDiscovery implements TimerTask {
     }
 
     // OFDPv2A FlowRule
-    private synchronized boolean updateOFDPv2AFlowRule() {
-        boolean updateSuccess = false;
+    private void updateFlowRule()
+    {
+        context.flowRuleService().purgeFlowRules(deviceId, appId);
+        context.flowRuleService().applyFlowRules(generateLldpFlowRule());
 
-        // LLDP
-        FlowRule newLldpRule = generateLldpFlowRule();
-        if(checkFlowEntryInequality(newLldpRule, this.lldpFlowRule))
-        {
-            if(removeFlowEntry(this.lldpFlowRule))
-            {
-                if(installFlowEntry(newLldpRule))
-                {
-                    this.lldpFlowRule = newLldpRule;
-                }
-            }
-        }
-        if(newLldpRule.exactMatch(this.lldpFlowRule) && this.lldpFlowRule!=null)
-            updateSuccess = true;
-
-        // BDDP
-        if(context.useBddp())
-        {
-            FlowRule newBddpRule = generateBddpFlowRule();
-            if(checkFlowEntryInequality(newBddpRule, this.bddpFlowRule))
-            {
-                if(removeFlowEntry(this.bddpFlowRule))
-                {
-                    if(installFlowEntry(newBddpRule))
-                    {
-                        this.bddpFlowRule = newBddpRule;
-                    } else updateSuccess = false;
-                } else updateSuccess = false;
-            }
-        }
-
-        // Return Statement
-        if(updateSuccess) return true;
-        else {
-            log.error("Update OFDPv2-A FlowRule {} failed.", newLldpRule);
-            return false;
+        if(context.useBddp()){
+            context.flowRuleService().applyFlowRules(generateBddpFlowRule());
         }
     }
+
     private FlowRule generateLldpFlowRule(){
         TrafficSelector.Builder selector = DefaultTrafficSelector.builder()
                 .matchEthType(Ethernet.TYPE_LLDP)
@@ -641,10 +612,11 @@ public class LinkDiscovery implements TimerTask {
     }
     private TrafficTreatment.Builder generateOFDPv2ATrafficTreatment(){
         TrafficTreatment.Builder treatment = DefaultTrafficTreatment.builder();
+//        log.info("Generating new FlowRule {}, current portmap: {}", deviceId, portMap);
 
         for (Port port : deviceService.getPorts(deviceId))
         {
-            if(port.number().equals(LOCAL) && !portMap.containsKey(port.number().toLong())) {
+            if(port.number().equals(LOCAL) || !portMap.containsKey(port.number().toLong())) {
                 continue; // Intentionally skip the local port and disabled port
             }
 
@@ -652,50 +624,5 @@ public class LinkDiscovery implements TimerTask {
                     .setOutput(port.number());
         }
         return treatment;
-    }
-
-    /***
-     *
-     * @param newRule New Rule that is replacing the Old Rule
-     * @param oldRule Old Rule that is to be Replaced.
-     * @return TRUE if oldRule and newRule are not equal else FALSE.
-     * if FALSE, it could mean that there is no need to update FlowRule from Switch
-     */
-    private boolean checkFlowEntryInequality(FlowRule newRule, FlowRule oldRule){
-        if(oldRule == null){
-            return true;
-        }
-        if(newRule == null){
-            return false;
-        }
-        return !newRule.exactMatch(oldRule);
-    }
-    private synchronized boolean installFlowEntry(FlowRule newRule) {
-        if(newRule == null){
-            log.warn("New Rule is Null, no rules are installed.");
-            return false;
-        }
-        try {
-            context.flowRuleService().applyFlowRules(newRule);
-            return true;
-        } catch(Exception e)
-        {
-            log.error("Unknown exception occurred when installing flow entry: {}", e.getMessage());
-            return false;
-        }
-    }
-    private synchronized boolean removeFlowEntry(FlowRule oldRule) {
-        if(oldRule == null) {
-            log.debug("Flow Rule in device {} is null, nothing is removed", deviceId);
-            return true;
-        }
-        try {
-            context.flowRuleService().removeFlowRules(oldRule);
-            return true;
-        } catch(Exception e)
-        {
-            log.error("Unknown exception occurred when removing flow entry: {}", e.getMessage());
-            return false;
-        }
     }
 }

@@ -199,7 +199,8 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
 
     // Device link discovery helpers.
     // One DeviceID maps to only one LinkDiscovery? YES
-    protected final Map<DeviceId, LinkDiscovery> discoverers = new ConcurrentHashMap<>();
+    //protected final Map<DeviceId, LinkDiscovery> discoverers = new ConcurrentHashMap<>();
+    public final static Map<DeviceId, LinkDiscovery> discoverers = new ConcurrentHashMap<>();
 
     // Most recent time a tracked link was seen; links are tracked if their
     // destination connection point is mastered by this controller instance.
@@ -424,6 +425,9 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
             executor.shutdownNow();
         }
         discoverers.values().forEach(LinkDiscovery::stop);
+        discoverers.values().forEach(linkDiscovery -> {
+            if (!linkDiscovery.isStopped()) log.error("linkDiscover failed to stop, deviceID: {}", linkDiscovery.deviceId);
+        });
         discoverers.clear();
         linkTimes.clear();
 
@@ -500,8 +504,10 @@ public class OFDPv2Provider extends AbstractProvider implements ProbedLinkProvid
 
         LinkDiscovery ld = discoverers.computeIfAbsent(device.id(),
                                                        did -> new LinkDiscovery(device.id(), appId, context));
-        if (ld.isStopped()) {
-            ld.start();
+        if(!shuttingDown) {
+            if (ld.isStopped()) {
+                ld.start();
+            }
         }
         return Optional.of(ld);
     }
